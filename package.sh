@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 
 VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Jellyfin.Plugin.RinkBoard/Jellyfin.Plugin.RinkBoard.csproj)
 GUID=7b311deb-536a-415d-baa6-00abdaa6e566
-TARGET_ABI=10.11.0.0
+TARGET_ABI=12.0.0.0
 BASE_URL=${1:-https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v$VERSION}
 CHANGELOG=${CHANGELOG:-"Rink Board $VERSION"}
 STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)

@@ -272,8 +272,10 @@ public partial class RinkBoardController : ControllerBase
             return Conflict(new { error = "A cue on the board still uses this clip. Remove the cue first." });
         }
 
-        System.IO.File.Delete(path);
-        _ = RescanAsync(folder);
+        // Through Jellyfin, so the library entry goes with the file. A rescan wouldn't drop it
+        // once the folder is empty: Jellyfin skips empty library folders (they might be an
+        // unplugged drive).
+        _library.DeleteItem(_library.GetItemById(Guid.Parse(itemId))!, new DeleteOptions { DeleteFileLocation = true });
         return NoContent();
     }
 
@@ -292,8 +294,8 @@ public partial class RinkBoardController : ControllerBase
     private static int _scanGeneration;
 
     /// <summary>
-    /// Starts Jellyfin's library scan (as Dashboard → Scan does) a moment after the last upload or
-    /// delete, so a batch of uploads shares one scan. Scanning just the upload folder isn't
+    /// Starts Jellyfin's library scan (as Dashboard → Scan does) a moment after the last upload,
+    /// so a batch of uploads shares one scan. Scanning just the upload folder isn't
     /// reliable: Jellyfin skips a library folder that was empty when the library was set up.
     /// </summary>
     private async Task RescanAsync(string folder)

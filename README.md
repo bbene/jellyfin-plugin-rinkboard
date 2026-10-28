@@ -9,7 +9,7 @@ The plugin adds to Jellyfin:
 - **Uploads.** Clips like horns and short effects are uploaded from the editor into a folder of your music library, and Jellyfin scans them in.
 - **A small API for tablets** at `/RinkBoard/api/…`, which tablets reach with a Jellyfin API key.
 
-Requires **Jellyfin 10.11**.
+Requires **Jellyfin 12** (12.0 or later). Version 1.0.0.0 is for Jellyfin 10.11; the catalog gives each server the right one.
 
 ## Install
 1. **Dashboard → Plugins → Repositories → +**, and add
@@ -28,7 +28,7 @@ Everything except the editor page itself needs a Jellyfin administrator: an admi
 Uploads only ever write to the upload folder you set, and only files in that folder can be deleted from the editor. Library songs can't be.
 
 ## Build
-Needs the .NET SDK (9 or later).
+Needs the .NET 10 SDK.
 
 ```bash
 dotnet test Jellyfin.Plugin.RinkBoard.Tests   # board rules and hook detection

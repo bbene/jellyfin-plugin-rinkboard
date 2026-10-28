@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.0.0.0",
+        "changelog": "For Jellyfin 12. (Version 1.0.0.0 remains for Jellyfin 10.11.)",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.0.0.0/rink-board_2.0.0.0.zip",
+        "checksum": "981d526b115a958384bcf60897556269",
+        "timestamp": "2026-10-28T14:46:46Z"
+      },
+      {
         "version": "1.0.0.0",
         "changelog": "Rink Board 1.0.0.0",
         "targetAbi": "10.11.0.0",
