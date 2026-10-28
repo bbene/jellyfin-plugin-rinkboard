@@ -45,6 +45,11 @@
   .result .sub { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .result .sub .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .result .sub button { padding: 3px 10px; }
+  /* Pages that already use the song; click one to jump to its cue. */
+  .result .used { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .result .used:empty { display: none; }
+  .result .used button { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #1f6feb33; border-color: #1f6feb88; }
+  .result .used button.here { background: var(--accent); border-color: var(--accent); }
   .muted { color: var(--muted); font-size: 12px; }
   h2 { font-size: 14px; margin: 0 0 10px; }
   .editor { margin-top: 16px; }
@@ -293,6 +298,7 @@
   }
 
   function render() {
+    renderUsage();
     const tabs = $('tabs'); tabs.innerHTML = '';
     const tab = (text, i) => {
       const b = document.createElement('button'); b.textContent = text;
@@ -466,6 +472,33 @@
     page().cues.push(c); selectedId = c.id; setDirty(true); render();
   }
 
+  // Jellyfin ids can come with or without dashes.
+  const idKey = (id) => String(id || '').replace(/-/g, '').toLowerCase();
+
+  // Tags each search result with the pages that already use that song.
+  function renderUsage() {
+    if (!board) return;
+    const uses = new Map();
+    board.pages.forEach((p, i) => p.cues.forEach((c) => {
+      const k = idKey(c.itemId);
+      if (!k) return;
+      if (!uses.has(k)) uses.set(k, []);
+      const list = uses.get(k);
+      if (!list.some((u) => u.i === i)) list.push({ i, p, c });
+    }));
+    for (const d of document.querySelectorAll('#results .result')) {
+      const box = d.querySelector('.used'); box.innerHTML = '';
+      for (const { i, p, c } of uses.get(d.dataset.itemId) || []) {
+        const b = document.createElement('button');
+        b.textContent = (p.type === 'playlist' ? '♫ ' : '') + p.name;
+        b.title = `On ${p.name} as "${c.label}". Click to show it.`;
+        if (i === pageIdx) b.className = 'here';
+        b.onclick = () => { pageIdx = i; selectedId = c.id; render(); };
+        box.appendChild(b);
+      }
+    }
+  }
+
   async function runSearch() {
     const r = $('results'); r.innerHTML = '<div class="muted">Searching…</div>';
     try {
@@ -476,7 +509,8 @@
       }
       for (const it of items) {
         const d = document.createElement('div'); d.className = 'result';
-        d.innerHTML = '<div class="title"></div><div class="sub"><span class="muted"></span><button data-k="music">+ Music</button><button data-k="sfx">+ SFX</button></div>';
+        d.dataset.itemId = idKey(it.itemId);
+        d.innerHTML = '<div class="title"></div><div class="used"></div><div class="sub"><span class="muted"></span><button data-k="music">+ Music</button><button data-k="sfx">+ SFX</button></div>';
         d.querySelector('.title').textContent = it.trackName;
         const tag = info.upload ? `<span class="tag">${it.source === 'local' ? 'Uploaded' : 'Jellyfin'}</span>` : '';
         const meta = d.querySelector('.sub .muted');
@@ -495,6 +529,7 @@
         }
         r.appendChild(d);
       }
+      renderUsage();
     } catch (err) { r.innerHTML = ''; r.textContent = 'Search failed: ' + err.message; }
   }
   $('searchForm').onsubmit = (e) => { e.preventDefault(); runSearch(); };
