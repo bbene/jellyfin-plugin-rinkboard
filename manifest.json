@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.1.1.0",
+        "changelog": "Says exactly what's wrong with the upload folder (not found, e.g. a Docker host path; not writable; not in a library), on the settings page and in the editor.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.1.1.0/rink-board_2.1.1.0.zip",
+        "checksum": "096e1069f1d89644c90fbf5e81da3109",
+        "timestamp": "2026-10-28T15:10:54Z"
+      },
+      {
         "version": "2.1.0.0",
         "changelog": "Export and import boards (moves a setup from the app's local mode into Jellyfin, and back).",
         "targetAbi": "12.0.0.0",

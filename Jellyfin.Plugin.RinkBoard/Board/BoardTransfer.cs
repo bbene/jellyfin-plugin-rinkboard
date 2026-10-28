@@ -104,7 +104,8 @@ public sealed class BoardTransfer
     /// it in, and the board's cues are pointed at the new library songs.
     /// </summary>
     /// <exception cref="InvalidDataException">The zip isn't a Rink Board export, or files need an upload folder that isn't set.</exception>
-    public async Task<ImportResult> ImportAsync(string zipPath, string? uploadFolder, Func<string, string> safeName, Func<string, string?> sniffExtension, CancellationToken ct)
+    /// <param name="uploadProblem">Why the upload folder can't be used, or null if it can.</param>
+    public async Task<ImportResult> ImportAsync(string zipPath, string? uploadFolder, string? uploadProblem, Func<string, string> safeName, Func<string, string?> sniffExtension, CancellationToken ct)
     {
         using var zip = OpenZip(zipPath);
         var boardEntry = zip.GetEntry("board.json") ?? throw new InvalidDataException("This zip isn't a Rink Board export (no board.json).");
@@ -152,10 +153,10 @@ public sealed class BoardTransfer
             }
         }
 
-        if (toAdd.Count > 0 && (uploadFolder is null || !Directory.Exists(uploadFolder)))
+        if (toAdd.Count > 0 && (uploadProblem is not null || uploadFolder is null))
         {
             throw new InvalidDataException(
-                $"This export has {toAdd.Count} audio file(s) that aren't in this Jellyfin yet. Set an upload folder in the Rink Board plugin settings so they have somewhere to go, then import again.");
+                $"This export has {toAdd.Count} audio file(s) that aren't in this Jellyfin yet, and they can't go into the upload folder: {uploadProblem}");
         }
 
         // Save new files into the upload folder, named after the song.

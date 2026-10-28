@@ -25,6 +25,7 @@
                             for example <code>/media/rinkboard</code>. Make it a folder of one of the music libraries above
                             so Jellyfin picks the files up. Leave blank to turn uploads off.
                         </div>
+                        <div id="rbUploadStatus" class="fieldDescription" style="margin-top: 0.5em"></div>
                     </div>
 
                     <div>
@@ -46,6 +47,16 @@
             (function () {
                 var pluginId = '7b311deb-536a-415d-baa6-00abdaa6e566';
                 var page = document.querySelector('#RinkBoardConfigPage');
+
+                // Asks the plugin whether Jellyfin can actually use the upload folder as set.
+                function showUploadStatus() {
+                    var el = document.querySelector('#rbUploadStatus');
+                    ApiClient.getJSON(ApiClient.getUrl('RinkBoard/api/info')).then(function (info) {
+                        if (!info.uploadFolder) { el.textContent = ''; return; }
+                        el.style.color = info.uploadProblem ? '#ff7b72' : '#3fb950';
+                        el.textContent = info.uploadProblem ? '⚠ ' + info.uploadProblem : '✓ Jellyfin can save clips in ' + info.uploadFolder + '.';
+                    }).catch(function () { el.textContent = ''; });
+                }
 
                 page.addEventListener('pageshow', function () {
                     document.querySelector('#rbEditorLink').href = ApiClient.getUrl('RinkBoard/');
@@ -73,6 +84,7 @@
                         if (!list.children.length) list.textContent = 'No music libraries yet. Add one in Dashboard → Libraries.';
                         document.querySelector('#rbUploadFolder').value = config.UploadFolder || '';
                         Dashboard.hideLoadingMsg();
+                        showUploadStatus();
                     });
                 });
 
@@ -85,6 +97,7 @@
                         config.UploadFolder = document.querySelector('#rbUploadFolder').value.trim();
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
+                            showUploadStatus();
                         });
                     });
                     return false;

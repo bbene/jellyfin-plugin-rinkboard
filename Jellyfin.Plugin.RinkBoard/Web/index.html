@@ -274,7 +274,7 @@
     if (info.mode === 'jellyfin') {
       $('toolsTitle').textContent = 'Clips and backups';
       $('transferHint').textContent = 'An export holds the board and all its audio. Import one from a tablet in local mode (or another Jellyfin) to move that setup here; its clips go into the upload folder.'
-        + (info.upload ? '' : ' Uploads are off until an upload folder is set in the plugin settings.');
+        + (info.upload ? '' : ' Uploads are off: ' + (info.uploadProblem || 'set an upload folder in the plugin settings.'));
     }
     $('libTitle').textContent = info.mode === 'local' ? (info.jellyfin ? 'Library (this device + Jellyfin)' : 'Library (this device)') : 'Jellyfin library';
     if (info.mode === 'local') $('searchHint').textContent = 'Adds to the current page. Upload clips below, or search Jellyfin if this device is connected to one.';

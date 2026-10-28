@@ -70,7 +70,47 @@ public partial class RinkBoardController : ControllerBase
     private static Configuration.PluginConfiguration Config => Plugin.Instance?.Configuration ?? new();
 
     private static string? UploadFolder =>
-        string.IsNullOrWhiteSpace(Config.UploadFolder) ? null : Path.GetFullPath(Config.UploadFolder.Trim());
+        Config.UploadFolder.Trim().Trim('"', '\'') is { Length: > 0 } folder ? Path.GetFullPath(folder) : null;
+
+    /// <summary>
+    /// What's wrong with the upload folder setting, in words an admin can act on; null when
+    /// clips can be saved there and Jellyfin will pick them up.
+    /// </summary>
+    private string? UploadFolderProblem()
+    {
+        var folder = UploadFolder;
+        if (folder is null)
+        {
+            return "No upload folder is set. Set one in Dashboard → Plugins → Rink Board.";
+        }
+
+        if (!Directory.Exists(folder))
+        {
+            return $"Jellyfin can't find the upload folder \"{folder}\". Check that it exists. If Jellyfin runs in Docker, "
+                + "use the folder's path inside the container (the right-hand side of its volume mapping, for example /media/rinkboard), "
+                + "not the path on the server's own disk.";
+        }
+
+        try
+        {
+            var probe = Path.Combine(folder, $".rinkboard-write-test-{Guid.NewGuid():N}");
+            System.IO.File.WriteAllBytes(probe, []);
+            System.IO.File.Delete(probe);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return $"Jellyfin can't save files in \"{folder}\". Give the account Jellyfin runs as write access to that folder "
+                + "(in Docker, check the volume isn't mounted read-only).";
+        }
+
+        if (!_library.GetVirtualFolders().Any(v => v.Locations.Any(l => folder == Path.GetFullPath(l) || IsInside(folder, Path.GetFullPath(l)))))
+        {
+            return $"\"{folder}\" isn't in a Jellyfin library, so clips saved there wouldn't show up. "
+                + "Add it (or a folder above it) to a music library in Dashboard → Libraries.";
+        }
+
+        return null;
+    }
 
     /// <summary>The board editor. It signs in with the admin's Jellyfin account itself.</summary>
     [HttpGet("")]
@@ -103,8 +143,8 @@ public partial class RinkBoardController : ControllerBase
     [Authorize(Policy = Policies.RequiresElevation)]
     public ActionResult Info()
     {
-        var uploads = UploadFolder is { } folder && Directory.Exists(folder);
-        return Ok(new { mode = "jellyfin", upload = uploads, transfer = true, jellyfin = true, analysis = true });
+        var problem = UploadFolderProblem();
+        return Ok(new { mode = "jellyfin", upload = problem is null, uploadProblem = problem, uploadFolder = UploadFolder, transfer = true, jellyfin = true, analysis = true });
     }
 
     [HttpGet("api/board")]
@@ -214,11 +254,12 @@ public partial class RinkBoardController : ControllerBase
     [RequestSizeLimit(MaxUploadBytes)]
     public async Task<ActionResult> Upload([FromQuery] string? name, CancellationToken ct)
     {
-        var folder = UploadFolder;
-        if (folder is null || !Directory.Exists(folder))
+        if (UploadFolderProblem() is { } problem)
         {
-            return BadRequest(new { error = "Set an upload folder in the Rink Board plugin settings first." });
+            return BadRequest(new { error = problem });
         }
+
+        var folder = UploadFolder!;
 
         var tmp = Path.Combine(folder, $".rinkboard-upload-{Guid.NewGuid():N}");
         string? ext;
@@ -286,7 +327,7 @@ public partial class RinkBoardController : ControllerBase
             }
 
             var result = await new BoardTransfer(_board, _library, _logger)
-                .ImportAsync(tmp, UploadFolder, SafeName, SniffExtension, ct)
+                .ImportAsync(tmp, UploadFolder, UploadFolderProblem(), SafeName, SniffExtension, ct)
                 .ConfigureAwait(false);
             return Ok(new { ok = true, version = result.Version, added = result.AddedFiles, reused = result.ReusedSongs, missing = result.MissingCues });
         }
