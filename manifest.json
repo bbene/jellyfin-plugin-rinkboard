@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.1.0.0",
+        "changelog": "Export and import boards (moves a setup from the app's local mode into Jellyfin, and back).",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.1.0.0/rink-board_2.1.0.0.zip",
+        "checksum": "5d362aba1eabf85c035c12ca47ba9bba",
+        "timestamp": "2026-10-28T14:58:04Z"
+      },
+      {
         "version": "2.0.0.0",
         "changelog": "For Jellyfin 12. (Version 1.0.0.0 remains for Jellyfin 10.11.)",
         "targetAbi": "12.0.0.0",

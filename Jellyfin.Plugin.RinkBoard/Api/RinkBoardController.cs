@@ -104,7 +104,7 @@ public partial class RinkBoardController : ControllerBase
     public ActionResult Info()
     {
         var uploads = UploadFolder is { } folder && Directory.Exists(folder);
-        return Ok(new { mode = "jellyfin", upload = uploads, transfer = false, jellyfin = true, analysis = true });
+        return Ok(new { mode = "jellyfin", upload = uploads, transfer = true, jellyfin = true, analysis = true });
     }
 
     [HttpGet("api/board")]
@@ -253,6 +253,51 @@ public partial class RinkBoardController : ControllerBase
         _logger.LogInformation("Rink Board: uploaded {Path}", target);
         _ = RescanAsync(folder);
         return Ok(new { name = Path.GetFileNameWithoutExtension(target), pending = true });
+    }
+
+    /// <summary>
+    /// The board with all its audio, as one zip (the same format the Rink Board app's local mode
+    /// exports and imports).
+    /// </summary>
+    [HttpGet("api/export")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<ActionResult> Export(CancellationToken ct)
+    {
+        var path = await new BoardTransfer(_board, _library, _logger).ExportAsync(UploadFolder, ct).ConfigureAwait(false);
+        var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+        return File(stream, "application/zip", "rinkboard-board.zip");
+    }
+
+    /// <summary>
+    /// Replaces the board with an exported one, from this plugin or from the app's local mode.
+    /// Files Jellyfin doesn't have yet go into the upload folder and are scanned in first.
+    /// </summary>
+    [HttpPost("api/import")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [DisableRequestSizeLimit]
+    public async Task<ActionResult> Import(CancellationToken ct)
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), $"rinkboard-import-{Guid.NewGuid():N}.zip");
+        try
+        {
+            await using (var file = System.IO.File.Create(tmp))
+            {
+                await Request.Body.CopyToAsync(file, ct).ConfigureAwait(false);
+            }
+
+            var result = await new BoardTransfer(_board, _library, _logger)
+                .ImportAsync(tmp, UploadFolder, SafeName, SniffExtension, ct)
+                .ConfigureAwait(false);
+            return Ok(new { ok = true, version = result.Version, added = result.AddedFiles, reused = result.ReusedSongs, missing = result.MissingCues });
+        }
+        catch (InvalidDataException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
+        finally
+        {
+            System.IO.File.Delete(tmp);
+        }
     }
 
     /// <summary>Deletes an uploaded clip. Only files in the upload folder, and not while a cue uses them.</summary>

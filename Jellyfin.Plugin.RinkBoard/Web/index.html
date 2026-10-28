@@ -170,8 +170,8 @@
       <div class="results" id="results"></div>
 
       <div id="localTools" class="hidden">
-        <h2 style="margin-top:16px">On this device</h2>
-        <div class="row">
+        <h2 style="margin-top:16px" id="toolsTitle">On this device</h2>
+        <div class="row" id="uploadRow">
           <label class="filebtn">Upload audio…<input type="file" id="uploadInput" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac,.aiff" multiple hidden></label>
         </div>
         <div class="muted" id="uploadStatus"></div>
@@ -180,7 +180,7 @@
             <button id="exportBtn">Export board</button>
             <label class="filebtn">Import board…<input type="file" id="importInput" accept=".zip,application/zip" hidden></label>
           </div>
-          <div class="muted">An export holds the board and all its audio, so you can copy a setup to another device.</div>
+          <div class="muted" id="transferHint">An export holds the board and all its audio, so you can copy a setup to another device.</div>
         </div>
       </div>
     </aside>
@@ -268,8 +268,14 @@
     setDirty(false); render();
     const first = !info.mode;
     try { info = await (await api('api/info')).json(); } catch { info = { mode: 'server' }; }
-    $('localTools').classList.toggle('hidden', !info.upload);
+    $('localTools').classList.toggle('hidden', !info.upload && !info.transfer);
+    $('uploadRow').classList.toggle('hidden', !info.upload);
     $('transferTools').classList.toggle('hidden', !info.transfer);
+    if (info.mode === 'jellyfin') {
+      $('toolsTitle').textContent = 'Clips and backups';
+      $('transferHint').textContent = 'An export holds the board and all its audio. Import one from a tablet in local mode (or another Jellyfin) to move that setup here; its clips go into the upload folder.'
+        + (info.upload ? '' : ' Uploads are off until an upload folder is set in the plugin settings.');
+    }
     $('libTitle').textContent = info.mode === 'local' ? (info.jellyfin ? 'Library (this device + Jellyfin)' : 'Library (this device)') : 'Jellyfin library';
     if (info.mode === 'local') $('searchHint').textContent = 'Adds to the current page. Upload clips below, or search Jellyfin if this device is connected to one.';
     if (first) runSearch();
@@ -538,11 +544,14 @@
 
   $('importInput').onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = '';
-    if (!f || !confirm(`Replace the current board with "${f.name}"? Its audio is added to this device.`)) return;
-    $('uploadStatus').textContent = 'Importing…';
+    const where = info.mode === 'jellyfin' ? "Audio Jellyfin doesn't have yet goes into the upload folder." : 'Its audio is added to this device.';
+    if (!f || !confirm(`Replace the current board with "${f.name}"? ${where}`)) return;
+    $('uploadStatus').textContent = info.mode === 'jellyfin' ? 'Importing… Jellyfin scans the new audio in first, which can take a minute.' : 'Importing…';
     try {
-      await api('api/import', { method: 'POST', body: f });
-      $('uploadStatus').textContent = 'Import complete.';
+      const r = await (await api('api/import', { method: 'POST', body: f })).json();
+      $('uploadStatus').textContent = r.added == null ? 'Import complete.'
+        : `Imported board v${r.version}: ${r.added} file(s) added, ${r.reused} song(s) already in Jellyfin.`
+          + (r.missing ? ` ${r.missing} cue(s) have no audio here; re-add those songs.` : '');
       await load(); runSearch();
     } catch (err) { $('uploadStatus').textContent = ''; alert('Import failed: ' + err.message); }
   };

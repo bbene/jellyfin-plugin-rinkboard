@@ -83,6 +83,23 @@ public sealed class BoardStore : IDisposable
         }
     }
 
+    /// <summary>Replaces the board with <paramref name="input"/> (an import) as the next version, whatever it was based on.</summary>
+    public async Task<JsonObject> ReplaceAsync(JsonObject input)
+    {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var current = await LoadUnlockedAsync().ConfigureAwait(false);
+            var next = Sanitize(input, Int(current["version"], 1));
+            await WriteAsync(next).ConfigureAwait(false);
+            return next;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     /// <summary>Gets whether any cue on the board plays <paramref name="itemId"/>.</summary>
     public async Task<bool> UsesItemAsync(string itemId)
     {

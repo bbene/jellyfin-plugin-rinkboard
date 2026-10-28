@@ -7,6 +7,7 @@ The plugin adds to Jellyfin:
 - **The board** itself: one shared board with game-situation pages, a ★ Main page of action buttons, playlists, and settings such as duck level and clip length.
 - **Song hooks.** It finds where each song's loudest section kicks in, using Jellyfin's own FFmpeg, so "Auto clip" cues start on the hook.
 - **Uploads.** Clips like horns and short effects are uploaded from the editor into a folder of your music library, and Jellyfin scans them in.
+- **Export and import.** A board and all its audio move as one zip, in the same format as the app's local mode. Import a tablet's local-mode export to move that setup into Jellyfin; its clips go into the upload folder and the cues are relinked to the new library songs. Songs that came from this Jellyfin aren't copied twice.
 - **A small API for tablets** at `/RinkBoard/api/…`, which tablets reach with a Jellyfin API key.
 
 Requires **Jellyfin 12** (12.0 or later). Version 1.0.0.0 is for Jellyfin 10.11; the catalog gives each server the right one.
@@ -20,7 +21,7 @@ Requires **Jellyfin 12** (12.0 or later). Version 1.0.0.0 is for Jellyfin 10.11;
 
 To install by hand, unzip a release's `rink-board_<version>.zip` into `<jellyfin config>/plugins/RinkBoard_<version>/` and restart Jellyfin.
 
-If Jellyfin is behind Cloudflare Access or another login page, bypass `/RinkBoard/api/*` for the tablets.
+If Jellyfin is behind Cloudflare Access or another login page, bypass `/RinkBoard/api/*` for the tablets. Cloudflare also limits uploads to 100 MB per request on its Free and Pro plans, so import big exports from your local network address instead of through the tunnel.
 
 ## Who can do what
 Everything except the editor page itself needs a Jellyfin administrator: an admin signed in to the editor, or an API key (Jellyfin treats API keys as administrators). Other Jellyfin users can't read or change the board.
