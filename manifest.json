@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.2.0.0",
+        "changelog": "Rink Board in the dashboard sidebar under Plugins; preview library songs with \u25b6 before adding them.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.2.0.0/rink-board_2.2.0.0.zip",
+        "checksum": "2222b7b6ec5ce4d91847437f4ab01181",
+        "timestamp": "2026-10-28T18:36:03Z"
+      },
+      {
         "version": "2.1.2.0",
         "changelog": "Library results show which pages use each song; click a tag to jump to it.",
         "targetAbi": "12.0.0.0",

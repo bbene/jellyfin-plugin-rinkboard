@@ -49,6 +49,7 @@
   .result .used { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .result .used:empty { display: none; }
   .result .used button { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #1f6feb33; border-color: #1f6feb88; }
+  .result audio { margin: 6px 0 0; height: 32px; }
   .result .used button.here { background: var(--accent); border-color: var(--accent); }
   .muted { color: var(--muted); font-size: 12px; }
   h2 { font-size: 14px; margin: 0 0 10px; }
@@ -499,7 +500,42 @@
     }
   }
 
+  // One player for library previews; it moves under whichever result is playing.
+  const libPlayer = document.createElement('audio');
+  libPlayer.controls = true;
+  let libItemId = null, libButton = null, libUrl = null, libLoad = 0;
+  const syncPlayButton = () => { if (libButton) libButton.textContent = libPlayer.paused ? '▶' : '❚❚'; };
+  libPlayer.onplay = () => { $('preview').pause(); syncPlayButton(); };
+  libPlayer.onpause = syncPlayButton;
+  $('preview').addEventListener('play', () => libPlayer.pause());
+  function stopLibPreview() {
+    libPlayer.pause(); libPlayer.remove(); libLoad++;
+    if (libButton) libButton.textContent = '▶';
+    libItemId = null; libButton = null;
+  }
+  // Fetched as a blob, like the cue preview, so the sign-in token never goes in a URL.
+  async function previewResult(it, d, button) {
+    if (libItemId === it.itemId && libPlayer.src) return libPlayer.paused ? libPlayer.play() : libPlayer.pause();
+    stopLibPreview();
+    const load = libLoad; libItemId = it.itemId; libButton = button;
+    button.textContent = '…';
+    try {
+      const blob = await (await api('api/audio/' + it.itemId)).blob();
+      if (load !== libLoad) return; // another preview was started meanwhile
+      if (libUrl) URL.revokeObjectURL(libUrl);
+      libUrl = URL.createObjectURL(blob);
+      libPlayer.src = libUrl;
+      d.appendChild(libPlayer);
+      await libPlayer.play();
+    } catch (err) {
+      if (load !== libLoad) return;
+      button.textContent = '▶'; libItemId = null;
+      alert('Preview failed: ' + err.message);
+    }
+  }
+
   async function runSearch() {
+    stopLibPreview();
     const r = $('results'); r.innerHTML = '<div class="muted">Searching…</div>';
     try {
       const items = await (await api('api/search?q=' + encodeURIComponent($('q').value))).json();
@@ -510,14 +546,15 @@
       for (const it of items) {
         const d = document.createElement('div'); d.className = 'result';
         d.dataset.itemId = idKey(it.itemId);
-        d.innerHTML = '<div class="title"></div><div class="used"></div><div class="sub"><span class="muted"></span><button data-k="music">+ Music</button><button data-k="sfx">+ SFX</button></div>';
+        d.innerHTML = '<div class="title"></div><div class="used"></div><div class="sub"><span class="muted"></span><button class="play" title="Preview">▶</button><button data-k="music">+ Music</button><button data-k="sfx">+ SFX</button></div>';
         d.querySelector('.title').textContent = it.trackName;
         const tag = info.upload ? `<span class="tag">${it.source === 'local' ? 'Uploaded' : 'Jellyfin'}</span>` : '';
         const meta = d.querySelector('.sub .muted');
         meta.innerHTML = tag;
         const details = `${it.artist ? it.artist + ' · ' : ''}${it.album ? it.album + ' · ' : ''}${fmt(it.durationMs)}`;
         meta.append(details); meta.title = details;
-        d.querySelectorAll('button').forEach((b) => b.onclick = () => addCue(it, b.dataset.k));
+        d.querySelectorAll('button[data-k]').forEach((b) => b.onclick = () => addCue(it, b.dataset.k));
+        d.querySelector('.play').onclick = (e) => previewResult(it, d, e.currentTarget);
         if (it.source === 'local') {
           const del = document.createElement('button'); del.textContent = '🗑'; del.title = 'Delete from this device'; del.className = 'danger';
           del.onclick = async () => {

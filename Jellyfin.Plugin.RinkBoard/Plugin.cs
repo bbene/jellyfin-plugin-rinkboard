@@ -35,6 +35,9 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             Name = "RinkBoard",
             DisplayName = "Rink Board",
             EmbeddedResourcePath = GetType().Namespace + ".Configuration.configPage.html",
+            // Lists the page under Plugins in the dashboard sidebar; the icon is a Material icon name.
+            EnableInMainMenu = true,
+            MenuIcon = "sports_hockey",
         },
     ];
 }
