@@ -1,0 +1,20 @@
+[
+  {
+    "guid": "7b311deb-536a-415d-baa6-00abdaa6e566",
+    "name": "Rink Board",
+    "description": "Build a hockey soundboard in the browser and play it offline on tablets with the Rink Board app.",
+    "overview": "Hockey soundboard: board editor and tablet sync",
+    "owner": "bbene",
+    "category": "General",
+    "versions": [
+      {
+        "version": "1.0.0.0",
+        "changelog": "Rink Board 1.0.0.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v1.0.0.0/rink-board_1.0.0.0.zip",
+        "checksum": "5019629821b880805f78375e548a90a0",
+        "timestamp": "2026-10-28T14:24:13Z"
+      }
+    ]
+  }
+]

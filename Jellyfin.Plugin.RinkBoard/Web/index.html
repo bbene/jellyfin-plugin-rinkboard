@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rink Board Admin</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --line: #30363d; --text: #e6edf3; --muted: #8b949e;
+    --accent: #1f6feb; --danger: #da3633; --ok: #2ea043;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  button { background: #21262d; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); }
+  button.danger { color: #ff7b72; }
+  input, select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+  input[type=checkbox] { width: auto; padding: 0; }
+  input[type=color] { width: 56px; height: 32px; padding: 2px; cursor: pointer; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 16px; margin: 0 auto 0 0; }
+  .status { color: var(--muted); font-size: 13px; }
+  .status.dirty { color: #d29922; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 36%); gap: 16px; padding: 16px; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button.active { background: var(--accent); border-color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; min-height: 80px; }
+  .cue { border-radius: 8px; padding: 10px; min-height: 76px; cursor: pointer; border: 2px solid transparent; position: relative; text-shadow: 0 1px 2px #0008; }
+  .cue.selected { border-color: #fff; }
+  .cue .l { font-weight: 600; font-size: 15px; }
+  .cue .s { font-size: 11px; opacity: .85; }
+  .cue .k { position: absolute; top: 6px; right: 8px; font-size: 11px; background: #0006; border-radius: 4px; padding: 0 5px; }
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .row > label { min-width: 90px; color: var(--muted); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .form-grid label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+  .results { max-height: 60vh; overflow: auto; margin-top: 8px; }
+  /* Title gets the full width on its own line; details and buttons share the line below. */
+  .result { padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  .result .title { font-weight: 500; overflow-wrap: anywhere; }
+  .result .sub { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .result .sub .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result .sub button { padding: 3px 10px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  h2 { font-size: 14px; margin: 0 0 10px; }
+  .editor { margin-top: 16px; }
+  audio { width: 100%; margin: 8px 0; }
+  .row > label.filebtn, label.filebtn { color: var(--text); min-width: 0; display: inline-block; background: #21262d; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  label.filebtn:hover { border-color: var(--muted); }
+  .tag { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 4px; }
+  #login { max-width: 340px; margin: 15vh auto; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="login" class="panel hidden">
+  <h2>Rink Board Admin</h2>
+  <form id="loginForm">
+    <div class="row hidden" id="userRow"><input id="user" placeholder="Jellyfin username" autocomplete="username"></div>
+    <div class="row"><input id="pw" type="password" placeholder="Admin password" autocomplete="current-password" required></div>
+    <div class="muted hidden" id="jfHint" style="margin-bottom:8px">Sign in with a Jellyfin administrator account.</div>
+    <button class="primary" type="submit">Sign in</button>
+    <span id="loginErr" class="muted"></span>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>🏒 Rink Board Admin</h1>
+    <span id="status" class="status"></span>
+    <button id="saveBtn" class="primary">Save &amp; publish</button>
+    <button id="logoutBtn">Sign out</button>
+  </header>
+  <main>
+    <section>
+      <div class="panel">
+        <div class="tabs" id="tabs"></div>
+        <div class="row" id="pageRow">
+          <button id="addPage">+ Page</button>
+          <button id="renamePage">Rename page</button>
+          <button id="movePageL">◀</button><button id="movePageR">▶</button>
+          <button id="delPage" class="danger">Delete page</button>
+        </div>
+        <div class="row" id="pageRow2">
+          <span class="muted">Page type</span>
+          <select id="pageType" style="width:auto"><option value="grid">Grid of buttons</option><option value="playlist">Playlist (plays back to back)</option></select>
+          <span class="muted">Play order</span>
+          <select id="pageOrder" style="width:auto"><option value="inorder">In order</option><option value="shuffle">Shuffle</option></select>
+        </div>
+        <div class="row hidden" id="mainRow">
+          <button id="addAction">+ Action</button>
+          <span class="muted">Main-page buttons. Each tap plays the next track from its page, or starts the page if it's a playlist.</span>
+        </div>
+        <div class="row hidden" id="settingsRow">
+          <label for="duckLevel" style="margin:0">Duck level</label>
+          <input id="duckLevel" type="range" min="0" max="100" step="5" style="width:180px">
+          <span id="duckValue" class="muted" style="min-width:3em"></span>
+          <span class="muted">How loud music stays while ducked (Duck button or Space). Lower is quieter.</span>
+        </div>
+        <div class="row hidden" id="settingsRow2">
+          <label for="clipLength" style="margin:0">Clip length</label>
+          <input id="clipLength" type="number" min="5" max="600" step="5" style="width:90px"> <span class="muted">seconds</span>
+          <span class="muted">How long Auto clip songs play from their hook before fading out.</span>
+        </div>
+        <div class="grid" id="grid"></div>
+      </div>
+
+      <div class="panel editor hidden" id="actionEditor">
+        <h2>Edit action</h2>
+        <div class="form-grid">
+          <div><label>Label</label><input id="a_label" maxlength="40"></div>
+          <div><label>Plays from page</label><select id="a_page"></select></div>
+          <div><label>Intro first (optional, e.g. goal horn)</label><select id="a_intro"></select></div>
+          <div><label>Hotkey (keyboard)</label><input id="a_hotkey" maxlength="1"></div>
+          <div><label>Color</label><input id="a_color" type="color"></div>
+        </div>
+        <div class="muted" id="a_hint" style="margin-top:8px"></div>
+        <div class="row" style="margin-top:8px">
+          <button id="aMoveL">◀ Move</button><button id="aMoveR">Move ▶</button>
+          <button id="delAction" class="danger" style="margin-left:auto">Delete action</button>
+        </div>
+      </div>
+
+      <div class="panel editor hidden" id="editor">
+        <h2>Edit cue</h2>
+        <div class="form-grid">
+          <div><label>Label</label><input id="f_label" maxlength="60"></div>
+          <div><label>Type</label>
+            <select id="f_kind"><option value="music">Music (one at a time, crossfades)</option><option value="sfx">SFX (overlaps)</option></select></div>
+          <div style="grid-column: span 2" id="clipRow"><label><input id="f_clip" type="checkbox"> Auto clip: start at the song's hook and play the clip length (set on ★ Main). A start or end you set wins.</label></div>
+          <div><label>Start (m:ss.s)</label><input id="f_start" placeholder="0:00"></div>
+          <div><label id="f_endLabel">End (m:ss.s, blank = track end)</label><input id="f_end" placeholder=""></div>
+          <div><label>Fade in (ms)</label><input id="f_fadeIn" type="number" min="0" step="100"></div>
+          <div><label>Fade out (ms)</label><input id="f_fadeOut" type="number" min="0" step="100"></div>
+          <div><label>Volume (0–100)</label><input id="f_volume" type="number" min="0" max="100"></div>
+          <div><label>Hotkey (Windows keyboard)</label><input id="f_hotkey" maxlength="1"></div>
+          <div><label>Color</label><input id="f_color" type="color"></div>
+          <div><label><input id="f_loop" type="checkbox"> Loop</label></div>
+          <div style="grid-column: span 2"><label>Then play (chain, e.g. horn → goal song)</label><select id="f_next"></select></div>
+        </div>
+        <div class="muted" id="f_track" style="margin-top:8px"></div>
+        <div class="muted" id="f_hook"></div>
+        <audio id="preview" controls preload="none"></audio>
+        <div class="row">
+          <button id="loadPreview">Load preview</button>
+          <button id="setStart">Set start = now</button>
+          <button id="setEnd">Set end = now</button>
+          <button id="playFromStart">▶ From start</button>
+        </div>
+        <div class="row">
+          <button id="moveL">◀ Move</button><button id="moveR">Move ▶</button>
+          <select id="moveTo" style="width:auto"></select><button id="moveToBtn">Move to page</button>
+          <button id="delCue" class="danger" style="margin-left:auto">Delete cue</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h2 id="libTitle">Jellyfin library</h2>
+      <form id="searchForm" class="row">
+        <input id="q" placeholder="Search tracks…">
+        <button type="submit">Search</button>
+      </form>
+      <div class="muted" id="searchHint">Adds to the current page. Put horns and short clips in a separate Jellyfin library to keep them easy to find.</div>
+      <div class="results" id="results"></div>
+
+      <div id="localTools" class="hidden">
+        <h2 style="margin-top:16px">On this device</h2>
+        <div class="row">
+          <label class="filebtn">Upload audio…<input type="file" id="uploadInput" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac,.aiff" multiple hidden></label>
+        </div>
+        <div class="muted" id="uploadStatus"></div>
+        <div id="transferTools">
+          <div class="row" style="margin-top:8px">
+            <button id="exportBtn">Export board</button>
+            <label class="filebtn">Import board…<input type="file" id="importInput" accept=".zip,application/zip" hidden></label>
+          </div>
+          <div class="muted">An export holds the board and all its audio, so you can copy a setup to another device.</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  // crypto.randomUUID only exists on HTTPS/localhost; the editor is usually opened
+  // over plain HTTP on the LAN (local mode), so build a v4 UUID from getRandomValues.
+  const uuid = () => {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  };
+  const COLORS = ['#1f6feb', '#da3633', '#2ea043', '#d29922', '#8957e5', '#bf4b8a', '#0e8a87', '#6e7681'];
+  // Served by the Rink Board Jellyfin plugin: sign in with a Jellyfin admin account instead
+  // of a Rink Board password, and talk to Jellyfin's API with its own auth header.
+  const onJellyfin = window.RINKBOARD_HOST === 'jellyfin';
+  let token = null;
+  try { token = localStorage.getItem('rinkboard.admin'); } catch {}
+  let deviceId = null;
+  try { deviceId = localStorage.getItem('rinkboard.deviceId'); } catch {}
+  if (!deviceId) { deviceId = uuid(); try { localStorage.setItem('rinkboard.deviceId', deviceId); } catch {} }
+  const jfAuth = (tok) => `MediaBrowser Client="Rink Board Editor", Device="Browser", DeviceId="${deviceId}", Version="1.0"${tok ? `, Token="${tok}"` : ''}`;
+  if (onJellyfin && !token) {
+    // Already signed in to Jellyfin's web app on this server? Reuse that session.
+    try {
+      const creds = JSON.parse(localStorage.getItem('jellyfin_credentials') || '{}');
+      const server = (creds.Servers || []).find((s) => s.AccessToken);
+      if (server) token = server.AccessToken;
+    } catch {}
+  }
+  // Opened from the Rink Board app: it passes the password in the fragment (never
+  // sent over the network) and handles exports itself, since web views can't download.
+  const inApp = new URLSearchParams(location.search).has('app') && !!window.RinkBoardApp;
+  const hashToken = new URLSearchParams(location.hash.slice(1)).get('token');
+  if (hashToken) { token = hashToken; history.replaceState(null, '', location.pathname + location.search); }
+  let board = null, baseVersion = null, pageIdx = -1 /* -1 = Main */, selectedId = null, dirty = false, previewUrl = null;
+  let info = {}; // what this server supports: {mode, upload, transfer, jellyfin}
+
+  async function api(path, opts = {}) {
+    const auth = onJellyfin ? jfAuth(token) : 'Bearer ' + token;
+    const res = await fetch(path, { ...opts, headers: { Authorization: auth, ...(typeof opts.body === 'string' ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) } });
+    if (res.status === 401) { showLogin(onJellyfin ? 'Sign in with your Jellyfin account.' : 'Session expired'); throw new Error('unauthorized'); }
+    if (res.status === 403 && onJellyfin) { showLogin('That Jellyfin account isn\'t an administrator.'); throw new Error('unauthorized'); }
+    if (!res.ok) { let m = res.statusText; try { m = (await res.json()).error; } catch {} throw new Error(m); }
+    return res;
+  }
+
+  const fmt = (ms) => { if (ms == null) return ''; const s = ms / 1000; return Math.floor(s / 60) + ':' + (s % 60).toFixed(1).padStart(4, '0'); };
+  const parse = (v) => { v = v.trim(); if (!v) return null; const p = v.split(':'); const s = p.length > 1 ? Number(p[0]) * 60 + Number(p[1]) : Number(p[0]); return Number.isFinite(s) ? Math.round(s * 1000) : null; };
+  const page = () => board.pages[pageIdx];
+  const clipLen = () => (board.settings && board.settings.clipLengthMs) || 30000;
+  // Where a song's sound and hook are, found by the device (local mode only).
+  const analyses = {};
+  async function analysisFor(itemId) {
+    if (!info.analysis) return null;
+    if (!(itemId in analyses)) {
+      analyses[itemId] = api('api/analysis/' + itemId).then((r) => r.json()).catch(() => null);
+    }
+    return analyses[itemId];
+  }
+  // What the board will actually play, given what's known about the song.
+  const startOf = (c, a) => c.startMs || (c.clip && a ? (a.hookMs ?? a.leadMs) : 0) || 0;
+  const endOf = (c, a) => c.endMs ?? (c.clip ? startOf(c, a) + clipLen() : null);
+  const allCues = () => board.pages.flatMap((p) => p.cues.map((c) => ({ ...c, pageName: p.name })));
+  const onMain = () => pageIdx === -1;
+  const findAction = (id) => { const i = board.actions.findIndex((a) => a.id === id); return i >= 0 ? { i, a: board.actions[i] } : null; };
+  const findCue = (id) => { for (const p of board.pages) { const i = p.cues.findIndex((c) => c.id === id); if (i >= 0) return { p, i, c: p.cues[i] }; } return null; };
+
+  function setDirty(v) { dirty = v; renderStatus(); }
+  function renderStatus() { const s = $('status'); s.textContent = dirty ? 'Unsaved changes' : `Published v${baseVersion}`; s.className = 'status' + (dirty ? ' dirty' : ''); }
+
+  function showLogin(msg) { $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('loginErr').textContent = msg || ''; }
+
+  async function load() {
+    const res = await api('api/board');
+    board = await res.json(); baseVersion = board.version;
+    board.actions = board.actions || [];
+    pageIdx = Math.min(pageIdx, board.pages.length - 1);
+    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    setDirty(false); render();
+    const first = !info.mode;
+    try { info = await (await api('api/info')).json(); } catch { info = { mode: 'server' }; }
+    $('localTools').classList.toggle('hidden', !info.upload);
+    $('transferTools').classList.toggle('hidden', !info.transfer);
+    $('libTitle').textContent = info.mode === 'local' ? (info.jellyfin ? 'Library (this device + Jellyfin)' : 'Library (this device)') : 'Jellyfin library';
+    if (info.mode === 'local') $('searchHint').textContent = 'Adds to the current page. Upload clips below, or search Jellyfin if this device is connected to one.';
+    if (first) runSearch();
+  }
+
+  function tile(label, sub, color, hotkey, selected, onclick) {
+    const d = document.createElement('div'); d.className = 'cue' + (selected ? ' selected' : '');
+    d.style.background = color;
+    d.innerHTML = `<div class="l"></div><div class="s"></div>${hotkey ? '<span class="k"></span>' : ''}`;
+    d.querySelector('.l').textContent = label;
+    d.querySelector('.s').textContent = sub;
+    if (hotkey) d.querySelector('.k').textContent = hotkey.toUpperCase();
+    d.onclick = onclick;
+    return d;
+  }
+
+  function render() {
+    const tabs = $('tabs'); tabs.innerHTML = '';
+    const tab = (text, i) => {
+      const b = document.createElement('button'); b.textContent = text;
+      if (i === pageIdx) b.className = 'active';
+      b.onclick = () => { pageIdx = i; selectedId = null; render(); };
+      tabs.appendChild(b);
+    };
+    tab(`★ Main (${board.actions.length})`, -1);
+    board.pages.forEach((p, i) => tab(`${p.type === 'playlist' ? '♫ ' : ''}${p.name} (${p.cues.length})`, i));
+    $('pageRow').classList.toggle('hidden', onMain());
+    $('pageRow2').classList.toggle('hidden', onMain());
+    $('mainRow').classList.toggle('hidden', !onMain());
+    $('settingsRow').classList.toggle('hidden', !onMain());
+    $('settingsRow2').classList.toggle('hidden', !onMain());
+    $('clipLength').value = Math.round(clipLen() / 1000);
+    board.settings = board.settings || {};
+    const duck = Math.round((board.settings.duckLevel ?? 0.3) * 100);
+    $('duckLevel').value = duck; $('duckValue').textContent = duck + '%';
+    const grid = $('grid'); grid.innerHTML = '';
+    if (onMain()) {
+      $('editor').classList.add('hidden');
+      if (!board.actions.length) grid.innerHTML = '<div class="muted">No actions yet. Add buttons like Home Goal, Away Goal, Penalty or Intermission.</div>';
+      for (const a of board.actions) {
+        const p = board.pages.find((x) => x.id === a.pageId);
+        const intro = a.introCueId && findCue(a.introCueId);
+        const sub = `${intro ? intro.c.label + ' → ' : ''}${p ? (p.type === 'playlist' ? '♫ ' : '') + p.name : 'no page'}`;
+        grid.appendChild(tile(a.label, sub, a.color, a.hotkey, a.id === selectedId, () => { selectedId = a.id; render(); }));
+      }
+      return renderActionEditor();
+    }
+    $('actionEditor').classList.add('hidden');
+    if (!page()) return;
+    $('pageType').value = page().type || 'grid';
+    $('pageOrder').value = page().order || 'inorder';
+    if (!page().cues.length) grid.innerHTML = '<div class="muted">No cues yet. Search the library on the right and add tracks.</div>';
+    const numbered = page().type === 'playlist';
+    for (const [n, c] of page().cues.entries()) {
+      const d = document.createElement('div'); d.className = 'cue' + (c.id === selectedId ? ' selected' : '');
+      d.style.background = c.color;
+      d.innerHTML = `<div class="l"></div><div class="s"></div>${c.hotkey ? '<span class="k"></span>' : ''}`;
+      d.querySelector('.l').textContent = (numbered ? `${n + 1}. ` : '') + c.label;
+      const clip = c.kind === 'music' && c.clip;
+      const from = clip && !c.startMs ? 'hook' : fmt(c.startMs);
+      const to = c.endMs != null ? '–' + fmt(c.endMs) : clip ? ` +${clipLen() / 1000}s` : '';
+      d.querySelector('.s').textContent = `${c.kind === 'sfx' ? 'SFX' : 'Music'} · ${from}${to}${c.nextCueId ? ' · ⇢' : ''}`;
+      if (c.hotkey) d.querySelector('.k').textContent = c.hotkey.toUpperCase();
+      d.onclick = () => { selectedId = c.id; render(); };
+      grid.appendChild(d);
+    }
+    renderEditor();
+  }
+
+  function renderEditor() {
+    const f = selectedId && findCue(selectedId);
+    $('editor').classList.toggle('hidden', !f);
+    if (!f) return;
+    const c = f.c;
+    $('f_label').value = c.label; $('f_kind').value = c.kind;
+    $('f_start').value = fmt(c.startMs); $('f_end').value = fmt(c.endMs);
+    $('f_fadeIn').value = c.fadeInMs; $('f_fadeOut').value = c.fadeOutMs;
+    $('f_volume').value = Math.round(c.volume * 100); $('f_hotkey').value = c.hotkey || '';
+    $('f_color').value = c.color; $('f_loop').checked = c.loop;
+    $('f_track').textContent = `${c.trackName}${c.artist ? ' — ' + c.artist : ''} (${fmt(c.durationMs)})`;
+    $('clipRow').classList.toggle('hidden', c.kind !== 'music');
+    $('f_clip').checked = !!c.clip;
+    const clip = c.kind === 'music' && c.clip;
+    $('f_start').placeholder = clip ? 'hook' : '0:00';
+    if (clip && !c.startMs) $('f_start').value = ''; // blank = start at the hook
+    $('f_end').placeholder = clip ? `start + ${clipLen() / 1000} s` : '';
+    $('f_endLabel').textContent = clip ? 'End (m:ss.s, blank = clip length)' : 'End (m:ss.s, blank = track end)';
+    renderHook(c);
+    const next = $('f_next'); next.innerHTML = '<option value="">— nothing —</option>';
+    for (const o of allCues()) if (o.id !== c.id) next.add(new Option(`${o.pageName}: ${o.label}`, o.id, false, o.id === c.nextCueId));
+    const mv = $('moveTo'); mv.innerHTML = '';
+    board.pages.forEach((p, i) => { if (i !== pageIdx) mv.add(new Option(p.name, i)); });
+  }
+
+  function renderActionEditor() {
+    const f = selectedId && findAction(selectedId);
+    $('actionEditor').classList.toggle('hidden', !f);
+    if (!f) return;
+    const a = f.a;
+    $('a_label').value = a.label; $('a_hotkey').value = a.hotkey || ''; $('a_color').value = a.color;
+    const ps = $('a_page'); ps.innerHTML = '<option value="">— none (intro only) —</option>';
+    for (const p of board.pages) ps.add(new Option(`${p.type === 'playlist' ? '♫ ' : ''}${p.name} (${p.cues.length})`, p.id, false, p.id === a.pageId));
+    const is = $('a_intro'); is.innerHTML = '<option value="">— none —</option>';
+    for (const o of allCues()) is.add(new Option(`${o.pageName}: ${o.label}`, o.id, false, o.id === a.introCueId));
+    const p = board.pages.find((x) => x.id === a.pageId);
+    $('a_hint').textContent = !p ? 'Pick the page this button plays from.'
+      : p.type === 'playlist' ? `Starts the "${p.name}" playlist (${p.order === 'shuffle' ? 'shuffled' : 'in order'}) and keeps playing until stopped.`
+      : `Each tap plays the next of ${p.cues.length} track(s) on "${p.name}" (${p.order === 'shuffle' ? 'shuffled, no repeats until all have played' : 'in order'}).`;
+  }
+
+  function readActionEditor() {
+    const f = findAction(selectedId); if (!f) return;
+    const a = f.a;
+    a.label = $('a_label').value.trim() || 'Action';
+    a.pageId = $('a_page').value;
+    a.introCueId = $('a_intro').value || null;
+    a.hotkey = $('a_hotkey').value.toLowerCase();
+    a.color = $('a_color').value;
+    setDirty(true); render();
+  }
+  ['a_label', 'a_page', 'a_intro', 'a_hotkey', 'a_color'].forEach((id) => $(id).addEventListener('change', readActionEditor));
+
+  $('addAction').onclick = () => {
+    const a = { id: uuid(), label: 'New action', color: COLORS[board.actions.length % COLORS.length], hotkey: '', pageId: board.pages[0]?.id || '', introCueId: null };
+    board.actions.push(a); selectedId = a.id; setDirty(true); render();
+  };
+  $('aMoveL').onclick = () => { const f = findAction(selectedId); if (f && moveIn(board.actions, f.i, -1)) { setDirty(true); render(); } };
+  $('aMoveR').onclick = () => { const f = findAction(selectedId); if (f && moveIn(board.actions, f.i, 1)) { setDirty(true); render(); } };
+  $('delAction').onclick = () => {
+    const f = findAction(selectedId); if (!f || !confirm(`Delete action "${f.a.label}"?`)) return;
+    board.actions.splice(f.i, 1); selectedId = null; setDirty(true); render();
+  };
+  $('pageType').onchange = () => { page().type = $('pageType').value; setDirty(true); render(); };
+  $('pageOrder').onchange = () => { page().order = $('pageOrder').value; setDirty(true); render(); };
+
+  async function renderHook(c) {
+    const el = $('f_hook'); el.textContent = '';
+    if (c.kind !== 'music' || !c.clip) return;
+    if (!info.analysis) { el.textContent = 'Each device finds the hook itself once the song has downloaded.'; return; }
+    el.textContent = 'Finding the hook…';
+    const a = await analysisFor(c.itemId);
+    if (selectedId !== c.id) return;
+    if (!a) { el.textContent = 'The hook will be found once this song is on the device.'; return; }
+    const where = a.hookMs != null ? `Hook found at ${fmt(a.hookMs)}.` : 'Short song: plays from the start.';
+    el.textContent = `${where} Plays ${fmt(startOf(c, a))}–${fmt(endOf(c, a))}. Load preview to check it.`;
+    $('f_start').placeholder = fmt(startOf(c, a));
+    if (c.endMs == null) $('f_end').placeholder = fmt(endOf(c, a));
+  }
+
+  function readEditor() {
+    const f = findCue(selectedId); if (!f) return;
+    const c = f.c;
+    c.label = $('f_label').value.trim() || 'Untitled';
+    c.kind = $('f_kind').value;
+    c.startMs = parse($('f_start').value) ?? 0;
+    c.endMs = parse($('f_end').value);
+    c.fadeInMs = Number($('f_fadeIn').value) || 0;
+    c.fadeOutMs = Number($('f_fadeOut').value) || 0;
+    c.volume = Math.min(100, Math.max(0, Number($('f_volume').value) || 0)) / 100;
+    c.hotkey = $('f_hotkey').value.toLowerCase();
+    c.color = $('f_color').value; c.loop = $('f_loop').checked; c.clip = $('f_clip').checked;
+    c.nextCueId = $('f_next').value || null;
+    setDirty(true); render();
+  }
+  ['f_label', 'f_kind', 'f_start', 'f_end', 'f_fadeIn', 'f_fadeOut', 'f_volume', 'f_hotkey', 'f_color', 'f_loop', 'f_clip', 'f_next']
+    .forEach((id) => $(id).addEventListener('change', readEditor));
+  $('clipLength').onchange = () => {
+    const secs = Math.min(600, Math.max(5, Math.round(Number($('clipLength').value) || 30)));
+    board.settings.clipLengthMs = secs * 1000; $('clipLength').value = secs;
+    setDirty(true);
+  };
+  $('duckLevel').oninput = () => {
+    board.settings.duckLevel = Number($('duckLevel').value) / 100;
+    $('duckValue').textContent = $('duckLevel').value + '%';
+    setDirty(true);
+  };
+
+  function addCue(item, kind) {
+    if (onMain()) return alert('Pick a page tab first, then add tracks to it. Main holds action buttons only.');
+    const c = {
+      id: uuid(), label: item.trackName.slice(0, 30), kind, itemId: item.itemId,
+      trackName: item.trackName, artist: item.artist, durationMs: item.durationMs,
+      color: kind === 'sfx' ? '#d29922' : COLORS[page().cues.length % COLORS.length],
+      startMs: 0, endMs: null, // full track; set an end point to cut it short
+      fadeInMs: 0, fadeOutMs: kind === 'sfx' ? 0 : 1500, volume: 1, loop: false, hotkey: '', nextCueId: null,
+      clip: kind === 'music' && page().type !== 'playlist', // grid songs start at their hook
+    };
+    page().cues.push(c); selectedId = c.id; setDirty(true); render();
+  }
+
+  async function runSearch() {
+    const r = $('results'); r.innerHTML = '<div class="muted">Searching…</div>';
+    try {
+      const items = await (await api('api/search?q=' + encodeURIComponent($('q').value))).json();
+      r.innerHTML = '';
+      if (!items.length) {
+        r.innerHTML = `<div class="muted">${info.upload && !info.jellyfin && !$('q').value ? 'No audio yet. Use Upload audio below.' : 'No matches.'}</div>`;
+      }
+      for (const it of items) {
+        const d = document.createElement('div'); d.className = 'result';
+        d.innerHTML = '<div class="title"></div><div class="sub"><span class="muted"></span><button data-k="music">+ Music</button><button data-k="sfx">+ SFX</button></div>';
+        d.querySelector('.title').textContent = it.trackName;
+        const tag = info.upload ? `<span class="tag">${it.source === 'local' ? 'Uploaded' : 'Jellyfin'}</span>` : '';
+        const meta = d.querySelector('.sub .muted');
+        meta.innerHTML = tag;
+        const details = `${it.artist ? it.artist + ' · ' : ''}${it.album ? it.album + ' · ' : ''}${fmt(it.durationMs)}`;
+        meta.append(details); meta.title = details;
+        d.querySelectorAll('button').forEach((b) => b.onclick = () => addCue(it, b.dataset.k));
+        if (it.source === 'local') {
+          const del = document.createElement('button'); del.textContent = '🗑'; del.title = 'Delete from this device'; del.className = 'danger';
+          del.onclick = async () => {
+            if (!confirm(`Delete "${it.trackName}" from this device?`)) return;
+            try { await api('api/library/' + it.itemId, { method: 'DELETE' }); runSearch(); }
+            catch (err) { alert('Delete failed: ' + err.message); }
+          };
+          d.querySelector('.sub').appendChild(del);
+        }
+        r.appendChild(d);
+      }
+    } catch (err) { r.innerHTML = ''; r.textContent = 'Search failed: ' + err.message; }
+  }
+  $('searchForm').onsubmit = (e) => { e.preventDefault(); runSearch(); };
+
+  const durationOf = (file) => new Promise((resolve) => {
+    const a = new Audio(), url = URL.createObjectURL(file);
+    const done = (ms) => { URL.revokeObjectURL(url); resolve(ms); };
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => done(Number.isFinite(a.duration) ? Math.round(a.duration * 1000) : 0);
+    a.onerror = () => done(0);
+    a.src = url;
+  });
+
+  $('uploadInput').onchange = async (e) => {
+    const files = [...e.target.files]; e.target.value = '';
+    const s = $('uploadStatus'); let ok = 0;
+    for (const [i, f] of files.entries()) {
+      s.textContent = `Uploading ${i + 1} of ${files.length}: ${f.name}`;
+      try {
+        const ms = await durationOf(f);
+        const name = f.name.replace(/\.[^.]+$/, '');
+        await api(`api/upload?name=${encodeURIComponent(name)}&durationMs=${ms}`, { method: 'POST', body: f });
+        ok++;
+      } catch (err) { alert(`Upload of ${f.name} failed: ${err.message}`); }
+    }
+    s.textContent = `Uploaded ${ok} of ${files.length} file(s).`;
+    $('q').value = ''; runSearch();
+    if (info.mode === 'jellyfin' && ok) {
+      // Jellyfin has to scan new files before they can be searched.
+      s.textContent += ' They show up in the library once Jellyfin has scanned them, usually within a few seconds.';
+      setTimeout(runSearch, 4000); setTimeout(runSearch, 10000);
+    }
+  };
+
+  $('exportBtn').onclick = async () => {
+    if (dirty && !confirm('You have unsaved changes; the export will contain the last saved board. Continue?')) return;
+    if (inApp) return RinkBoardApp.postMessage('export');
+    $('exportBtn').textContent = 'Exporting…';
+    try {
+      const blob = await (await api('api/export')).blob();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = `rinkboard-v${baseVersion}.zip`; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    } catch (err) { alert('Export failed: ' + err.message); }
+    $('exportBtn').textContent = 'Export board';
+  };
+
+  $('importInput').onchange = async (e) => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f || !confirm(`Replace the current board with "${f.name}"? Its audio is added to this device.`)) return;
+    $('uploadStatus').textContent = 'Importing…';
+    try {
+      await api('api/import', { method: 'POST', body: f });
+      $('uploadStatus').textContent = 'Import complete.';
+      await load(); runSearch();
+    } catch (err) { $('uploadStatus').textContent = ''; alert('Import failed: ' + err.message); }
+  };
+
+  // Preview fetches the audio as a blob so the admin password never ends up in a URL / tunnel logs.
+  $('loadPreview').onclick = async () => {
+    const f = findCue(selectedId); if (!f) return;
+    $('loadPreview').textContent = 'Loading…';
+    try {
+      const blob = await (await api('api/audio/' + f.c.itemId)).blob();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(blob);
+      $('preview').src = previewUrl; $('preview').currentTime = startOf(f.c, await analysisFor(f.c.itemId)) / 1000;
+    } catch (err) { alert('Preview failed: ' + err.message); }
+    $('loadPreview').textContent = 'Load preview';
+  };
+  $('setStart').onclick = () => { $('f_start').value = fmt($('preview').currentTime * 1000); readEditor(); };
+  $('setEnd').onclick = () => { $('f_end').value = fmt($('preview').currentTime * 1000); readEditor(); };
+  $('playFromStart').onclick = async () => {
+    const f = findCue(selectedId); if (!f || !$('preview').src) return;
+    $('preview').currentTime = startOf(f.c, await analysisFor(f.c.itemId)) / 1000; $('preview').play();
+  };
+  // Stop at the cue's end only when playing through it, so you can still scrub past it to listen.
+  let lastPreviewMs = 0;
+  $('preview').ontimeupdate = async () => {
+    const f = findCue(selectedId); const p = $('preview'); if (!f) return;
+    const now = p.currentTime * 1000, before = lastPreviewMs; lastPreviewMs = now;
+    const end = endOf(f.c, await analysisFor(f.c.itemId));
+    if (end != null && before < end && now >= end && now - before < 1000) p.pause();
+  };
+
+  const moveIn = (arr, i, d) => { const j = i + d; if (j < 0 || j >= arr.length) return false; [arr[i], arr[j]] = [arr[j], arr[i]]; return true; };
+  $('moveL').onclick = () => { const f = findCue(selectedId); if (f && moveIn(f.p.cues, f.i, -1)) { setDirty(true); render(); } };
+  $('moveR').onclick = () => { const f = findCue(selectedId); if (f && moveIn(f.p.cues, f.i, 1)) { setDirty(true); render(); } };
+  $('moveToBtn').onclick = () => { const f = findCue(selectedId); const t = board.pages[$('moveTo').value]; if (!f || !t) return; t.cues.push(...f.p.cues.splice(f.i, 1)); selectedId = null; setDirty(true); render(); };
+  $('delCue').onclick = () => {
+    const f = findCue(selectedId); if (!f || !confirm(`Delete "${f.c.label}"?`)) return;
+    f.p.cues.splice(f.i, 1);
+    for (const o of allCues()) if (o.nextCueId === f.c.id) findCue(o.id).c.nextCueId = null;
+    for (const a of board.actions) if (a.introCueId === f.c.id) a.introCueId = null;
+    selectedId = null; setDirty(true); render();
+  };
+
+  $('addPage').onclick = () => { const n = prompt('Page name'); if (!n) return; board.pages.push({ id: uuid(), name: n, type: 'grid', order: 'inorder', cues: [] }); pageIdx = board.pages.length - 1; setDirty(true); render(); };
+  $('renamePage').onclick = () => { const n = prompt('Rename page', page().name); if (!n) return; page().name = n; setDirty(true); render(); };
+  $('movePageL').onclick = () => { if (moveIn(board.pages, pageIdx, -1)) { pageIdx--; setDirty(true); render(); } };
+  $('movePageR').onclick = () => { if (moveIn(board.pages, pageIdx, 1)) { pageIdx++; setDirty(true); render(); } };
+  $('delPage').onclick = () => {
+    if (board.pages.length < 2) return alert('Keep at least one page.');
+    if (!confirm(`Delete page "${page().name}" and its ${page().cues.length} cues?`)) return;
+    const gone = board.pages.splice(pageIdx, 1)[0];
+    const goneCues = new Set(gone.cues.map((c) => c.id));
+    for (const a of board.actions) {
+      if (a.pageId === gone.id) a.pageId = '';
+      if (goneCues.has(a.introCueId)) a.introCueId = null;
+    }
+    for (const o of allCues()) if (goneCues.has(o.nextCueId)) findCue(o.id).c.nextCueId = null;
+    pageIdx = Math.max(0, pageIdx - 1); selectedId = null; setDirty(true); render();
+  };
+
+  $('saveBtn').onclick = async () => {
+    try {
+      const res = await api('api/board', { method: 'PUT', body: JSON.stringify({ ...board, baseVersion }) });
+      board = await res.json(); board.actions = board.actions || []; baseVersion = board.version; setDirty(false); render();
+    } catch (err) { alert('Save failed: ' + err.message); }
+  };
+  window.rinkboardDirty = () => dirty; // asked by the app before closing the editor
+  if (inApp) $('logoutBtn').classList.add('hidden');
+  $('logoutBtn').onclick = () => {
+    // A session this editor opened itself is closed on the server too.
+    if (onJellyfin && token && localStorage.getItem('rinkboard.admin') === token) {
+      fetch('../Sessions/Logout', { method: 'POST', headers: { Authorization: jfAuth(token) } }).catch(() => {});
+    }
+    try { localStorage.removeItem('rinkboard.admin'); } catch {}
+    token = null; showLogin();
+  };
+  window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  $('loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    if (onJellyfin) {
+      $('loginErr').textContent = 'Signing in…';
+      try {
+        const res = await fetch('../Users/AuthenticateByName', {
+          method: 'POST',
+          headers: { Authorization: jfAuth(null), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ Username: $('user').value.trim(), Pw: $('pw').value }),
+        });
+        if (!res.ok) { $('loginErr').textContent = res.status === 401 ? 'Wrong username or password' : `Sign-in failed (${res.status})`; return; }
+        const auth = await res.json();
+        if (!auth.User?.Policy?.IsAdministrator) { $('loginErr').textContent = 'That Jellyfin account isn\'t an administrator.'; return; }
+        token = auth.AccessToken;
+      } catch (err) { $('loginErr').textContent = 'Sign-in failed: ' + err.message; return; }
+    } else token = $('pw').value;
+    try { await load(); try { localStorage.setItem('rinkboard.admin', token); } catch {} }
+    catch (err) { if (err.message !== 'unauthorized') $('loginErr').textContent = err.message; else if (!onJellyfin) $('loginErr').textContent = 'Wrong password'; }
+  };
+  if (onJellyfin) {
+    $('userRow').classList.remove('hidden'); $('jfHint').classList.remove('hidden');
+    $('user').required = true; $('pw').placeholder = 'Password'; $('pw').required = false;
+  }
+
+  if (token) load().catch(() => {}); else showLogin();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Rink Board</title>
+</head>
+<body>
+    <div id="RinkBoardConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <h2 class="sectionTitle">Rink Board</h2>
+                <p>Build the soundboard in the editor, then connect tablets running the Rink Board app.</p>
+                <p><a id="rbEditorLink" is="emby-linkbutton" class="raised button-submit emby-button" target="_blank" href="#">Open the board editor</a></p>
+
+                <form id="RinkBoardConfigForm">
+                    <h3 class="sectionTitle">Music libraries</h3>
+                    <div class="fieldDescription">The editor searches these. Leave all unticked to search every music library.</div>
+                    <div id="rbLibraries" class="checkboxList" style="margin: 0.5em 0 1.5em"></div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="rbUploadFolder">Upload folder</label>
+                        <input id="rbUploadFolder" type="text" is="emby-input" />
+                        <div class="fieldDescription">
+                            Where clips uploaded in the editor (horns, short effects) are saved, as a path on this server,
+                            for example <code>/media/rinkboard</code>. Make it a folder of one of the music libraries above
+                            so Jellyfin picks the files up. Leave blank to turn uploads off.
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+
+                <h3 class="sectionTitle" style="margin-top: 2em">Connecting tablets</h3>
+                <p>
+                    In <b>Dashboard → API Keys</b>, create a key named "Rink Board". In the app's Settings, choose
+                    <b>Remote server</b> and enter this server's address and that key. Tablets download everything they need,
+                    so they keep working with no connection during the game.
+                </p>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var pluginId = '7b311deb-536a-415d-baa6-00abdaa6e566';
+                var page = document.querySelector('#RinkBoardConfigPage');
+
+                page.addEventListener('pageshow', function () {
+                    document.querySelector('#rbEditorLink').href = ApiClient.getUrl('RinkBoard/');
+                    Dashboard.showLoadingMsg();
+                    Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getVirtualFolders()]).then(function (r) {
+                        var config = r[0], folders = r[1] || [];
+                        var chosen = (config.LibraryIds || []).map(function (id) { return id.replace(/-/g, '').toLowerCase(); });
+                        var list = document.querySelector('#rbLibraries');
+                        list.innerHTML = '';
+                        folders.filter(function (f) { return f.CollectionType === 'music'; }).forEach(function (f) {
+                            var label = document.createElement('label');
+                            label.className = 'emby-checkbox-label';
+                            label.style.display = 'block';
+                            var box = document.createElement('input');
+                            box.type = 'checkbox';
+                            box.setAttribute('is', 'emby-checkbox');
+                            box.value = f.ItemId;
+                            box.checked = chosen.indexOf(String(f.ItemId).replace(/-/g, '').toLowerCase()) >= 0;
+                            var name = document.createElement('span');
+                            name.textContent = f.Name;
+                            label.appendChild(box);
+                            label.appendChild(name);
+                            list.appendChild(label);
+                        });
+                        if (!list.children.length) list.textContent = 'No music libraries yet. Add one in Dashboard → Libraries.';
+                        document.querySelector('#rbUploadFolder').value = config.UploadFolder || '';
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                document.querySelector('#RinkBoardConfigForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.LibraryIds = Array.prototype.map.call(
+                            document.querySelectorAll('#rbLibraries input:checked'), function (b) { return b.value; });
+                        config.UploadFolder = document.querySelector('#rbUploadFolder').value.trim();
+                        ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                    return false;
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>
