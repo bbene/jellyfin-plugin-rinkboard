@@ -44,6 +44,20 @@ public sealed class BoardStore : IDisposable
         _file = Path.Combine(dataFolder, "board.json");
     }
 
+    /// <summary>Whether a cue on the board plays the library song <paramref name="itemId"/>.</summary>
+    public async Task<bool> UsesItemAsync(string itemId)
+    {
+        if (!Guid.TryParse(itemId, out var id))
+        {
+            return false;
+        }
+
+        var board = await LoadAsync().ConfigureAwait(false);
+        return (board["pages"] as JsonArray ?? [])
+            .SelectMany(p => p?["cues"] as JsonArray ?? [])
+            .Any(c => Guid.TryParse(c?["itemId"]?.GetValue<string>(), out var cueId) && cueId == id);
+    }
+
     /// <summary>Gets the board, creating the starter board on first use.</summary>
     public async Task<JsonObject> LoadAsync()
     {
@@ -98,15 +112,6 @@ public sealed class BoardStore : IDisposable
         {
             _lock.Release();
         }
-    }
-
-    /// <summary>Gets whether any cue on the board plays <paramref name="itemId"/>.</summary>
-    public async Task<bool> UsesItemAsync(string itemId)
-    {
-        var board = await LoadAsync().ConfigureAwait(false);
-        return (board["pages"] as JsonArray ?? [])
-            .SelectMany(p => p?["cues"] as JsonArray ?? [])
-            .Any(c => string.Equals(c?["itemId"]?.GetValue<string>(), itemId, StringComparison.OrdinalIgnoreCase));
     }
 
     public static JsonObject DefaultBoard()
@@ -198,6 +203,8 @@ public sealed class BoardStore : IDisposable
                 ["clipLengthMs"] = Math.Clamp(Num(s["clipLengthMs"], 30000), 5000, 600000),
                 ["normalize"] = IsBlank(s["normalize"]) || Bool(s["normalize"]),
                 ["targetLufs"] = Math.Clamp(Math.Round(Dbl(s["targetLufs"], -14)), -30, -5),
+                // Tablets in server mode ask for it before opening Settings; blank = no lock.
+                ["settingsPin"] = new string(Str(s["settingsPin"], 20).Where(char.IsAsciiDigit).Take(8).ToArray()),
             },
             ["pages"] = pages,
             ["actions"] = actions,

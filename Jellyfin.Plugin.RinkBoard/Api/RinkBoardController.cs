@@ -25,8 +25,10 @@ namespace Jellyfin.Plugin.RinkBoard.Api;
 
 /// <summary>
 /// The Rink Board editor page and API, at <c>/RinkBoard/</c>. The routes match the Rink Board
-/// app's local server, so the same editor and app work with either. Everything but the page
-/// itself needs a Jellyfin administrator: a signed-in admin (the editor) or an API key (tablets).
+/// app's local server, so the same editor and app work with either. Tablets only read the board
+/// and download its songs, which any signed-in Jellyfin user may do (so a tablet can sign in with
+/// Quick Connect as an ordinary user). Everything else needs an administrator: a signed-in admin
+/// (the editor) or an API key.
 /// </summary>
 [ApiController]
 [Route("RinkBoard")]
@@ -34,6 +36,9 @@ public partial class RinkBoardController : ControllerBase
 {
     private const long MaxUploadBytes = 300L * 1024 * 1024;
     private const int SearchPageSize = 60;
+
+    // Jellyfin gives administrators and API keys this role.
+    private const string AdministratorRole = "Administrator";
 
     private static readonly Dictionary<string, string> MimeByExtension = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -149,7 +154,7 @@ public partial class RinkBoardController : ControllerBase
     }
 
     [HttpGet("api/board")]
-    [Authorize(Policy = Policies.RequiresElevation)]
+    [Authorize]
     public async Task<ActionResult> GetBoard([FromQuery] string? since)
     {
         var board = await _board.LoadAsync().ConfigureAwait(false);
@@ -224,12 +229,20 @@ public partial class RinkBoardController : ControllerBase
         return Ok(items);
     }
 
-    /// <summary>The song's file, with range support so tablets and the editor preview can seek.</summary>
+    /// <summary>
+    /// The song's file, with range support so tablets and the editor preview can seek. Users who
+    /// aren't administrators only get songs that are on the board.
+    /// </summary>
     [HttpGet("api/audio/{itemId}")]
     [HttpHead("api/audio/{itemId}")]
-    [Authorize(Policy = Policies.RequiresElevation)]
-    public ActionResult GetAudio([FromRoute] string itemId)
+    [Authorize]
+    public async Task<ActionResult> GetAudio([FromRoute] string itemId)
     {
+        if (!User.IsInRole(AdministratorRole) && !await _board.UsesItemAsync(itemId).ConfigureAwait(false))
+        {
+            return Forbid();
+        }
+
         var path = AudioPath(itemId);
         if (path is null)
         {

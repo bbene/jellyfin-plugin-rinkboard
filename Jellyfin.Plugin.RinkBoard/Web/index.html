@@ -119,6 +119,11 @@
           <input id="targetLufs" type="number" min="-30" max="-5" step="1" style="width:70px"> <span class="muted">LUFS</span>
           <span class="muted">Plays every song at about the same loudness. Loud songs are turned down; quiet ones come up at most 6 dB. Sound effects aren't changed. Higher numbers are louder.</span>
         </div>
+        <div class="row hidden" id="settingsRow4">
+          <label style="margin:0">Settings PIN</label>
+          <input id="settingsPin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="None" style="width:100px">
+          <span class="muted">Tablets ask for this before opening their Settings, so the server and sign-in can't be changed during a game. 4–8 digits; leave blank for no PIN. Takes effect when tablets sync.</span>
+        </div>
         <div class="grid" id="grid"></div>
       </div>
 
@@ -326,12 +331,14 @@
     $('settingsRow').classList.toggle('hidden', !onMain());
     $('settingsRow2').classList.toggle('hidden', !onMain());
     $('settingsRow3').classList.toggle('hidden', !onMain());
+    $('settingsRow4').classList.toggle('hidden', !onMain() || !onJellyfin); // tablets only sync from Jellyfin
     $('clipLength').value = Math.round(clipLen() / 1000);
     board.settings = board.settings || {};
     const duck = Math.round((board.settings.duckLevel ?? 0.3) * 100);
     $('duckLevel').value = duck; $('duckValue').textContent = duck + '%';
     $('normalize').checked = board.settings.normalize ?? true;
     $('targetLufs').value = targetLufs(); $('targetLufs').disabled = !$('normalize').checked;
+    if (document.activeElement !== $('settingsPin')) $('settingsPin').value = board.settings.settingsPin || '';
     const grid = $('grid'); grid.innerHTML = '';
     if (onMain()) {
       $('editor').classList.add('hidden');
@@ -490,6 +497,13 @@
   $('targetLufs').onchange = () => {
     const v = Math.min(-5, Math.max(-30, Math.round(Number($('targetLufs').value) || -14)));
     board.settings.targetLufs = v; $('targetLufs').value = v;
+    setDirty(true);
+  };
+  $('settingsPin').oninput = () => { $('settingsPin').value = $('settingsPin').value.replace(/\D/g, '').slice(0, 8); };
+  $('settingsPin').onchange = () => {
+    const pin = $('settingsPin').value;
+    if (pin && pin.length < 4) { alert('Use a PIN of 4 to 8 digits, or leave it blank for none.'); $('settingsPin').value = board.settings.settingsPin || ''; return; }
+    board.settings.settingsPin = pin;
     setDirty(true);
   };
   $('duckLevel').oninput = () => {

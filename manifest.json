@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.5.0.0",
+        "changelog": "Tablets can sign in with Quick Connect as any Jellyfin user (no API key or admin needed): signed-in users can read the board and download its songs; everything else still needs an admin. New Settings PIN on \u2605 Main locks the app's Settings on tablets.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.5.0.0/rink-board_2.5.0.0.zip",
+        "checksum": "b02a5572427d88f536d7d97d193db8bb",
+        "timestamp": "2026-10-29T16:50:11Z"
+      },
+      {
         "version": "2.4.0.0",
         "changelog": "Library list: newest songs first (or A\u2013Z), a Show more button past 60 songs, and an option to hide songs already on the board.",
         "targetAbi": "12.0.0.0",

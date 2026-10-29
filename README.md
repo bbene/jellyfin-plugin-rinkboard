@@ -8,7 +8,7 @@ The plugin adds to Jellyfin:
 - **Song hooks and levels.** Using Jellyfin's own FFmpeg, it finds where each song's loudest section kicks in, so "Auto clip" cues start on the hook, and measures its loudness, so the editor can show how much each song is adjusted when **Even out song levels** is on. (Tablets measure the songs themselves too, and play them at the same level.)
 - **Uploads.** Clips like horns and short effects are uploaded from the editor into a folder of your music library, and Jellyfin scans them in.
 - **Export and import.** A board and all its audio move as one zip, in the same format as the app's local mode. Import a tablet's local-mode export to move that setup into Jellyfin; its clips go into the upload folder and the cues are relinked to the new library songs. Songs that came from this Jellyfin aren't copied twice.
-- **A small API for tablets** at `/RinkBoard/api/…`, which tablets reach with a Jellyfin API key.
+- **A small API for tablets** at `/RinkBoard/api/…`. Tablets sign in with Quick Connect as any Jellyfin user, or use an API key.
 
 Requires **Jellyfin 12** (12.0 or later). Version 1.0.0.0 is for Jellyfin 10.11; the catalog gives each server the right one.
 
@@ -17,14 +17,14 @@ Requires **Jellyfin 12** (12.0 or later). Version 1.0.0.0 is for Jellyfin 10.11;
    `https://github.com/bbene/jellyfin-plugin-rinkboard/releases/latest/download/manifest.json`
 2. Install **Rink Board** from the catalog and restart Jellyfin.
 3. **Dashboard → Plugins → Rink Board**: tick the music libraries to search and set the upload folder.
-4. **Dashboard → API Keys → +**: create a key for your tablets and enter it, with your Jellyfin address, in the app's Settings under **Jellyfin server**.
+4. In the app's Settings, choose **Jellyfin server**, enter your Jellyfin address and tap **Sign in with Quick Connect**, then approve the code from Jellyfin's profile menu → **Quick Connect**. A user just for the tablets works well and needs no admin rights. (An API key from **Dashboard → API Keys** works too.)
 
 To install by hand, unzip a release's `rink-board_<version>.zip` into `<jellyfin config>/plugins/RinkBoard_<version>/` and restart Jellyfin.
 
-If Jellyfin is behind Cloudflare Access or another login page, bypass `/RinkBoard/api/*` for the tablets. Cloudflare also limits uploads to 100 MB per request on its Free and Pro plans, so import big exports from your local network address instead of through the tunnel.
+If Jellyfin is behind Cloudflare Access or another login page, bypass `/RinkBoard/api/*` for the tablets, plus `/QuickConnect/*` and `/Users/AuthenticateWithQuickConnect` for Quick Connect. Cloudflare also limits uploads to 100 MB per request on its Free and Pro plans, so import big exports from your local network address instead of through the tunnel.
 
 ## Who can do what
-Everything except the editor page itself needs a Jellyfin administrator: an admin signed in to the editor, or an API key (Jellyfin treats API keys as administrators). Other Jellyfin users can't read or change the board.
+Any signed-in Jellyfin user can read the board and download the songs on it; that's all a tablet does. Everything else (the editor, searching the library, saving, uploads, import and export) needs an administrator: an admin signed in to the editor, or an API key (Jellyfin treats API keys as administrators). Users who aren't admins can't download library songs that aren't on the board.
 
 Uploads only ever write to the upload folder you set, and only files in that folder can be deleted from the editor. Library songs can't be.
 
