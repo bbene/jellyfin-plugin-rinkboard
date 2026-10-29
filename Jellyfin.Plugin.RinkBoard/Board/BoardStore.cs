@@ -135,7 +135,7 @@ public sealed class BoardStore : IDisposable
         {
             ["version"] = 1,
             ["updatedAt"] = Now(),
-            ["settings"] = new JsonObject { ["duckLevel"] = 0.3, ["defaultFadeOutMs"] = 1500, ["clipLengthMs"] = 30000 },
+            ["settings"] = new JsonObject { ["duckLevel"] = 0.3, ["defaultFadeOutMs"] = 1500, ["clipLengthMs"] = 30000, ["normalize"] = true, ["targetLufs"] = -14 },
             ["pages"] = pages,
             ["actions"] = actions,
         };
@@ -196,6 +196,8 @@ public sealed class BoardStore : IDisposable
                 ["duckLevel"] = Math.Clamp(Dbl(s["duckLevel"], 0.3), 0, 1),
                 ["defaultFadeOutMs"] = Num(s["defaultFadeOutMs"], 1500),
                 ["clipLengthMs"] = Math.Clamp(Num(s["clipLengthMs"], 30000), 5000, 600000),
+                ["normalize"] = IsBlank(s["normalize"]) || Bool(s["normalize"]),
+                ["targetLufs"] = Math.Clamp(Math.Round(Dbl(s["targetLufs"], -14)), -30, -5),
             },
             ["pages"] = pages,
             ["actions"] = actions,

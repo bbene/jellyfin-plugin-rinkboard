@@ -33,4 +33,16 @@ public class TrackEdgesTests
 
     [Fact]
     public void SilentFileHasNothingToTrimTo() => Assert.Null(TrackEdges.Analyze(new short[Rate * 2], Rate));
+
+    [Fact]
+    public void MeasuresLoudnessLikeTheApp()
+    {
+        // A 1 kHz sine at -20 dBFS reads -23 LUFS mono, -20 LUFS as stereo.
+        var edges = TrackEdges.Analyze(Signal(20, _ => 0.1 * 32767, 1000), Rate)!;
+        Assert.InRange(edges.Lufs!.Value, -20.5, -19.5);
+        Assert.InRange(edges.PeakDb!.Value, -20.1, -19.9);
+        var withSilence = TrackEdges.Analyze(Signal(40, t => t < 20 ? 0.1 * 32767 : 0, 1000), Rate)!;
+        Assert.InRange(withSilence.Lufs!.Value - edges.Lufs.Value, -0.2, 0.2);
+    }
 }
+

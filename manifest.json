@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.3.0.0",
+        "changelog": "Evens out song levels: each song's loudness is measured (LUFS) and tablets turn loud songs down and quiet ones up to the board's target (Even out song levels on \u2605 Main, -14 LUFS by default). The editor shows each music cue's loudness and how much it will change.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.3.0.0/rink-board_2.3.0.0.zip",
+        "checksum": "773cfd754cdbd8ec6238cf35bbd5a5db",
+        "timestamp": "2026-10-29T13:20:12Z"
+      },
+      {
         "version": "2.2.0.0",
         "changelog": "Rink Board in the dashboard sidebar under Plugins; preview library songs with \u25b6 before adding them.",
         "targetAbi": "12.0.0.0",

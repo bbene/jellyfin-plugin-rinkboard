@@ -113,6 +113,11 @@
           <input id="clipLength" type="number" min="5" max="600" step="5" style="width:90px"> <span class="muted">seconds</span>
           <span class="muted">How long Auto clip songs play from their hook before fading out.</span>
         </div>
+        <div class="row hidden" id="settingsRow3">
+          <label style="margin:0"><input id="normalize" type="checkbox"> Even out song levels</label>
+          <input id="targetLufs" type="number" min="-30" max="-5" step="1" style="width:70px"> <span class="muted">LUFS</span>
+          <span class="muted">Plays every song at about the same loudness. Loud songs are turned down; quiet ones come up at most 6 dB. Sound effects aren't changed. Higher numbers are louder.</span>
+        </div>
         <div class="grid" id="grid"></div>
       </div>
 
@@ -151,6 +156,7 @@
         </div>
         <div class="muted" id="f_track" style="margin-top:8px"></div>
         <div class="muted" id="f_hook"></div>
+        <div class="muted" id="f_level"></div>
         <audio id="preview" controls preload="none"></audio>
         <div class="row">
           <button id="loadPreview">Load preview</button>
@@ -243,6 +249,7 @@
   const parse = (v) => { v = v.trim(); if (!v) return null; const p = v.split(':'); const s = p.length > 1 ? Number(p[0]) * 60 + Number(p[1]) : Number(p[0]); return Number.isFinite(s) ? Math.round(s * 1000) : null; };
   const page = () => board.pages[pageIdx];
   const clipLen = () => (board.settings && board.settings.clipLengthMs) || 30000;
+  const targetLufs = () => (board.settings && board.settings.targetLufs) ?? -14;
   // Where a song's sound and hook are, found by the device (local mode only).
   const analyses = {};
   async function analysisFor(itemId) {
@@ -314,10 +321,13 @@
     $('mainRow').classList.toggle('hidden', !onMain());
     $('settingsRow').classList.toggle('hidden', !onMain());
     $('settingsRow2').classList.toggle('hidden', !onMain());
+    $('settingsRow3').classList.toggle('hidden', !onMain());
     $('clipLength').value = Math.round(clipLen() / 1000);
     board.settings = board.settings || {};
     const duck = Math.round((board.settings.duckLevel ?? 0.3) * 100);
     $('duckLevel').value = duck; $('duckValue').textContent = duck + '%';
+    $('normalize').checked = board.settings.normalize ?? true;
+    $('targetLufs').value = targetLufs(); $('targetLufs').disabled = !$('normalize').checked;
     const grid = $('grid'); grid.innerHTML = '';
     if (onMain()) {
       $('editor').classList.add('hidden');
@@ -370,7 +380,7 @@
     if (clip && !c.startMs) $('f_start').value = ''; // blank = start at the hook
     $('f_end').placeholder = clip ? `start + ${clipLen() / 1000} s` : '';
     $('f_endLabel').textContent = clip ? 'End (m:ss.s, blank = clip length)' : 'End (m:ss.s, blank = track end)';
-    renderHook(c);
+    renderHook(c); renderLevel(c);
     const next = $('f_next'); next.innerHTML = '<option value="">— nothing —</option>';
     for (const o of allCues()) if (o.id !== c.id) next.add(new Option(`${o.pageName}: ${o.label}`, o.id, false, o.id === c.nextCueId));
     const mv = $('moveTo'); mv.innerHTML = '';
@@ -432,6 +442,24 @@
     if (c.endMs == null) $('f_end').placeholder = fmt(endOf(c, a));
   }
 
+  // Same rule as the app (TrackEdges.gainDbFor in lib/silence.dart).
+  function levelChangeDb(a) {
+    if (a.lufs == null) return 0;
+    let gain = targetLufs() - a.lufs;
+    if (gain > 0) gain = Math.min(gain, 6, Math.max(0, -(a.peakDb ?? 0) - 1));
+    return gain;
+  }
+  async function renderLevel(c) {
+    const el = $('f_level'); el.textContent = '';
+    if (c.kind !== 'music' || !info.analysis) return;
+    const a = await analysisFor(c.itemId);
+    if (selectedId !== c.id || !a || a.lufs == null) return;
+    const level = `Loudness ${a.lufs.toFixed(1)} LUFS.`;
+    if (!(board.settings.normalize ?? true)) { el.textContent = `${level} Even out song levels is off (★ Main).`; return; }
+    const d = levelChangeDb(a);
+    el.textContent = Math.abs(d) < 0.5 ? `${level} Plays as it is.` : `${level} Plays ${d > 0 ? 'up' : 'down'} ${Math.abs(d).toFixed(1)} dB to match the others.`;
+  }
+
   function readEditor() {
     const f = findCue(selectedId); if (!f) return;
     const c = f.c;
@@ -452,6 +480,12 @@
   $('clipLength').onchange = () => {
     const secs = Math.min(600, Math.max(5, Math.round(Number($('clipLength').value) || 30)));
     board.settings.clipLengthMs = secs * 1000; $('clipLength').value = secs;
+    setDirty(true);
+  };
+  $('normalize').onchange = () => { board.settings.normalize = $('normalize').checked; setDirty(true); render(); };
+  $('targetLufs').onchange = () => {
+    const v = Math.min(-5, Math.max(-30, Math.round(Number($('targetLufs').value) || -14)));
+    board.settings.targetLufs = v; $('targetLufs').value = v;
     setDirty(true);
   };
   $('duckLevel').oninput = () => {

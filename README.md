@@ -5,7 +5,7 @@ A Jellyfin plugin for [Rink Board](https://github.com/bbene), a hockey soundboar
 The plugin adds to Jellyfin:
 - **A board editor** at `https://<your-jellyfin>/RinkBoard/`. Sign in with a Jellyfin administrator account; if you're already signed in to Jellyfin in that browser, it uses that session.
 - **The board** itself: one shared board with game-situation pages, a ★ Main page of action buttons, playlists, and settings such as duck level and clip length.
-- **Song hooks.** It finds where each song's loudest section kicks in, using Jellyfin's own FFmpeg, so "Auto clip" cues start on the hook.
+- **Song hooks and levels.** Using Jellyfin's own FFmpeg, it finds where each song's loudest section kicks in, so "Auto clip" cues start on the hook, and measures its loudness, so the editor can show how much each song is adjusted when **Even out song levels** is on. (Tablets measure the songs themselves too, and play them at the same level.)
 - **Uploads.** Clips like horns and short effects are uploaded from the editor into a folder of your music library, and Jellyfin scans them in.
 - **Export and import.** A board and all its audio move as one zip, in the same format as the app's local mode. Import a tablet's local-mode export to move that setup into Jellyfin; its clips go into the upload folder and the cues are relinked to the new library songs. Songs that came from this Jellyfin aren't copied twice.
 - **A small API for tablets** at `/RinkBoard/api/…`, which tablets reach with a Jellyfin API key.

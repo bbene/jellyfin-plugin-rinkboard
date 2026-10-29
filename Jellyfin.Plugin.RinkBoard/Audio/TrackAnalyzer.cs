@@ -1,24 +1,52 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Jellyfin.Plugin.RinkBoard.Audio;
 
-/// <summary>Where a song's sound starts and ends, and where its hook is (all in ms).</summary>
-public sealed record TrackEdges(int LeadMs, int EndMs, int TotalMs, int? HookMs)
+/// <summary>
+/// Where a song's sound starts and ends and where its hook is (all in ms), plus its overall
+/// loudness (roughly as a LUFS meter reads it) and its loudest sample (dB below full scale).
+/// </summary>
+public sealed record TrackEdges(int LeadMs, int EndMs, int TotalMs, int? HookMs, double? Lufs = null, double? PeakDb = null)
 {
     // Same rules as the Rink Board app (lib/silence.dart), so the editor shows the hook a
     // tablet will actually use. Change both together.
     private const int HookSpan = 60; // 6 s, in 100 ms windows
     private const double HookMarginDb = 1.0;
 
-    /// <summary>Measures 16-bit mono PCM. Null when the whole file is silent.</summary>
-    public static TrackEdges? Analyze(ReadOnlySpan<short> samples, int sampleRate)
+    /// <summary>
+    /// Measures 16-bit PCM, interleaved if <paramref name="channels"/> is 2. Null when the
+    /// whole file is silent.
+    /// </summary>
+    public static TrackEdges? Analyze(ReadOnlySpan<short> pcm, int sampleRate, int channels = 1)
     {
+        short[] left, right, mono; // mono mix, for the edges and the hook
+        if (channels == 2)
+        {
+            var n = pcm.Length / 2;
+            left = new short[n];
+            right = new short[n];
+            mono = new short[n];
+            for (var i = 0; i < n; i++)
+            {
+                left[i] = pcm[2 * i];
+                right[i] = pcm[(2 * i) + 1];
+                mono[i] = (short)((pcm[2 * i] + pcm[(2 * i) + 1]) / 2);
+            }
+        }
+        else
+        {
+            mono = left = right = pcm.ToArray(); // a mono file plays the same sound in both speakers
+        }
+
+        ReadOnlySpan<short> samples = mono;
         var window = sampleRate / 50; // 20 ms
         // About -50 dBFS RMS: quieter than any real intro or outro, louder than
         // encoder padding and room tone left at the ends of a recording.
@@ -48,11 +76,93 @@ public sealed record TrackEdges(int LeadMs, int EndMs, int TotalMs, int? HookMs)
         var total = Ms(samples.Length);
         var lead = Ms(first.Value) < 100 ? 0 : Ms(first.Value) - 20; // tiny leads aren't worth a seek
         var hook = FindHook(samples, sampleRate, first.Value, last.Value);
+        var peak = 1;
+        foreach (var side in new[] { left, right })
+        {
+            foreach (var x in side)
+            {
+                peak = Math.Max(peak, Math.Abs((int)x));
+            }
+        }
+
         return new TrackEdges(
             lead,
             total - Ms(last.Value) < 300 ? total : Ms(last.Value) + 100,
             total,
-            hook is null ? null : hook - lead < 1000 ? lead : hook);
+            hook is null ? null : hook - lead < 1000 ? lead : hook,
+            Loudness([left, right], sampleRate),
+            20 * Math.Log10(peak / 32768.0));
+    }
+
+    /// <summary>
+    /// Integrated loudness of a stereo pair following ITU-R BS.1770: K-weighting, 400 ms blocks
+    /// every 100 ms, then the absolute (-70) and relative (-10 LU) gates.
+    /// </summary>
+    private static double? Loudness(short[][] sides, int sampleRate)
+    {
+        // K-weighting filter coefficients for any sample rate (as in libebur128).
+        var k = Math.Tan(Math.PI * 1681.974450955533 / sampleRate);
+        const double q1 = 0.7071752369554196;
+        var vh = Math.Pow(10, 3.999843853973347 / 20);
+        var vb = Math.Pow(vh, 0.4996667741545416);
+        var a0 = 1 + (k / q1) + (k * k);
+        double b0 = (vh + (vb * k / q1) + (k * k)) / a0, b1 = 2 * ((k * k) - vh) / a0, b2 = (vh - (vb * k / q1) + (k * k)) / a0;
+        double a1 = 2 * ((k * k) - 1) / a0, a2 = (1 - (k / q1) + (k * k)) / a0;
+        k = Math.Tan(Math.PI * 38.13547087602444 / sampleRate);
+        const double q2 = 0.5003270373238773;
+        a0 = 1 + (k / q2) + (k * k);
+        double c1 = 2 * ((k * k) - 1) / a0, c2 = (1 - (k / q2) + (k * k)) / a0;
+
+        var step = sampleRate / 10; // 100 ms
+        var n = sides[0].Length / step;
+        if (n < 4)
+        {
+            return null;
+        }
+
+        var power = new double[n]; // weighted mean square of each 100 ms, both channels added
+        foreach (var samples in sides)
+        {
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0, z1 = 0, z2 = 0;
+            for (var w = 0; w < n; w++)
+            {
+                var sum = 0.0;
+                for (var i = w * step; i < (w + 1) * step; i++)
+                {
+                    var x = samples[i] / 32768.0;
+                    var y = (b0 * x) + (b1 * x1) + (b2 * x2) - (a1 * y1) - (a2 * y2); // high shelf
+                    var z = y - (2 * y1) + y2 - (c1 * z1) - (c2 * z2); // high pass
+                    x2 = x1;
+                    x1 = x;
+                    y2 = y1;
+                    y1 = y;
+                    z2 = z1;
+                    z1 = z;
+                    sum += z * z;
+                }
+
+                power[w] += sum / step;
+            }
+        }
+
+        static double LufsOf(double p) => -0.691 + (10 * Math.Log10(p));
+        var loud = new List<double>();
+        for (var w = 0; w + 4 <= n; w++)
+        {
+            var p = (power[w] + power[w + 1] + power[w + 2] + power[w + 3]) / 4;
+            if (p > 0 && LufsOf(p) > -70)
+            {
+                loud.Add(p);
+            }
+        }
+
+        if (loud.Count == 0)
+        {
+            return null;
+        }
+
+        var gate = LufsOf(loud.Average()) - 10;
+        return LufsOf(loud.Where(p => LufsOf(p) > gate).Average());
     }
 
     /// <summary>
@@ -152,7 +262,8 @@ public sealed class TrackAnalyzer : IDisposable
     public async Task<TrackEdges?> AnalyzeAsync(string itemId, string path, string ffmpegPath, CancellationToken ct)
     {
         var stamp = File.GetLastWriteTimeUtc(path).Ticks;
-        if (_cache.TryGetValue(itemId, out var known) && known.Stamp == stamp)
+        // Entries from before loudness measuring are redone so they gain it.
+        if (_cache.TryGetValue(itemId, out var known) && known.Stamp == stamp && known.Edges.Lufs is not null)
         {
             return known.Edges;
         }
@@ -186,7 +297,7 @@ public sealed class TrackAnalyzer : IDisposable
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (var arg in new[] { "-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-ac", "1", "-ar", Rate.ToString(System.Globalization.CultureInfo.InvariantCulture), "-f", "s16le", "-" })
+        foreach (var arg in new[] { "-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-ac", "2", "-ar", Rate.ToString(System.Globalization.CultureInfo.InvariantCulture), "-f", "s16le", "-" })
         {
             psi.ArgumentList.Add(arg);
         }
@@ -203,7 +314,7 @@ public sealed class TrackAnalyzer : IDisposable
         }
 
         var bytes = pcm.GetBuffer().AsSpan(0, (int)pcm.Length & ~1);
-        return TrackEdges.Analyze(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(bytes), Rate);
+        return TrackEdges.Analyze(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(bytes), Rate, channels: 2);
     }
 
     private async Task SaveAsync()

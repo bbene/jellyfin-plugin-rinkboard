@@ -242,7 +242,7 @@ public partial class RinkBoardController : ControllerBase
         // Spelled out: Jellyfin's JSON settings would capitalize the record's property names.
         return edges is null
             ? NotFound(new { error = "could not read this file" })
-            : Ok(new { leadMs = edges.LeadMs, endMs = edges.EndMs, totalMs = edges.TotalMs, hookMs = edges.HookMs });
+            : Ok(new { leadMs = edges.LeadMs, endMs = edges.EndMs, totalMs = edges.TotalMs, hookMs = edges.HookMs, lufs = edges.Lufs, peakDb = edges.PeakDb });
     }
 
     /// <summary>
