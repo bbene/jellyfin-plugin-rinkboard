@@ -33,6 +33,7 @@ namespace Jellyfin.Plugin.RinkBoard.Api;
 public partial class RinkBoardController : ControllerBase
 {
     private const long MaxUploadBytes = 300L * 1024 * 1024;
+    private const int SearchPageSize = 60;
 
     private static readonly Dictionary<string, string> MimeByExtension = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -180,17 +181,23 @@ public partial class RinkBoardController : ControllerBase
         }
     }
 
-    /// <summary>Songs in the music libraries chosen in the plugin settings.</summary>
+    /// <summary>
+    /// A page of songs in the music libraries chosen in the plugin settings, newest first
+    /// (<paramref name="sort"/> "new") or by name. <c>X-More: 1</c> says another page follows.
+    /// </summary>
     [HttpGet("api/search")]
     [Authorize(Policy = Policies.RequiresElevation)]
-    public ActionResult Search([FromQuery] string? q)
+    public ActionResult Search([FromQuery] string? q, [FromQuery] string? sort, [FromQuery] int start = 0)
     {
         var query = new InternalItemsQuery
         {
             IncludeItemTypes = [BaseItemKind.Audio],
             Recursive = true,
-            Limit = 60,
-            OrderBy = [(ItemSortBy.SortName, SortOrder.Ascending)],
+            StartIndex = Math.Max(0, start),
+            Limit = SearchPageSize + 1, // one extra to tell whether there's another page
+            OrderBy = sort == "new"
+                ? [(ItemSortBy.DateCreated, SortOrder.Descending), (ItemSortBy.SortName, SortOrder.Ascending)]
+                : [(ItemSortBy.SortName, SortOrder.Ascending)],
             AncestorIds = Config.LibraryIds.Select(id => Guid.TryParse(id, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToArray(),
         };
         if (!string.IsNullOrWhiteSpace(q))
@@ -199,7 +206,13 @@ public partial class RinkBoardController : ControllerBase
         }
 
         var uploads = UploadFolder;
-        var items = _library.GetItemList(query).OfType<MediaBrowser.Controller.Entities.Audio.Audio>().Select(a => new
+        var found = _library.GetItemList(query);
+        if (found.Count > SearchPageSize)
+        {
+            Response.Headers["X-More"] = "1";
+        }
+
+        var items = found.Take(SearchPageSize).OfType<MediaBrowser.Controller.Entities.Audio.Audio>().Select(a => new
         {
             itemId = a.Id.ToString("N"),
             trackName = a.Name,

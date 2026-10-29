@@ -41,6 +41,7 @@
   .results { max-height: 60vh; overflow: auto; margin-top: 8px; }
   /* Title gets the full width on its own line; details and buttons share the line below. */
   .result { padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  #results .more { display:block; margin:10px auto; }
   .result .title { font-weight: 500; overflow-wrap: anywhere; }
   .result .sub { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .result .sub .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -176,8 +177,11 @@
       <h2 id="libTitle">Jellyfin library</h2>
       <form id="searchForm" class="row">
         <input id="q" placeholder="Search tracks…">
+        <select id="sort" title="Order"><option value="new">Newest</option><option value="name">A–Z</option></select>
         <button type="submit">Search</button>
       </form>
+      <label class="muted"><input type="checkbox" id="hideUsed"> Hide songs already on the board</label>
+      <div class="muted" id="hiddenNote"></div>
       <div class="muted" id="searchHint">Adds to the current page. Put horns and short clips in a separate Jellyfin library to keep them easy to find.</div>
       <div class="results" id="results"></div>
 
@@ -521,7 +525,11 @@
       const list = uses.get(k);
       if (!list.some((u) => u.i === i)) list.push({ i, p, c });
     }));
+    const hide = $('hideUsed').checked;
+    let hidden = 0;
     for (const d of document.querySelectorAll('#results .result')) {
+      d.hidden = hide && uses.has(d.dataset.itemId);
+      if (d.hidden) hidden++;
       const box = d.querySelector('.used'); box.innerHTML = '';
       for (const { i, p, c } of uses.get(d.dataset.itemId) || []) {
         const b = document.createElement('button');
@@ -532,6 +540,7 @@
         box.appendChild(b);
       }
     }
+    $('hiddenNote').textContent = hidden ? `${hidden} song${hidden === 1 ? '' : 's'} on the board hidden.` : '';
   }
 
   // One player for library previews; it moves under whichever result is playing.
@@ -568,13 +577,22 @@
     }
   }
 
-  async function runSearch() {
-    stopLibPreview();
-    const r = $('results'); r.innerHTML = '<div class="muted">Searching…</div>';
+  // Results come a page at a time; Show more asks for the next one.
+  let searchStart = 0;
+  async function runSearch(more = false) {
+    const r = $('results');
+    if (!more) {
+      stopLibPreview();
+      searchStart = 0;
+      r.innerHTML = '<div class="muted">Searching…</div>';
+    }
     try {
-      const items = await (await api('api/search?q=' + encodeURIComponent($('q').value))).json();
-      r.innerHTML = '';
-      if (!items.length) {
+      const res = await api(`api/search?q=${encodeURIComponent($('q').value)}&sort=${$('sort').value}&start=${searchStart}`);
+      const items = await res.json();
+      if (more) r.querySelector('.more')?.remove(); else r.innerHTML = '';
+      // Local mode sends all of this device's songs at once and pages only Jellyfin's.
+      searchStart += info.mode === 'local' ? items.filter((it) => it.source === 'jellyfin').length : items.length;
+      if (!items.length && !more) {
         r.innerHTML = `<div class="muted">${info.upload && !info.jellyfin && !$('q').value ? 'No audio yet. Use Upload audio below.' : 'No matches.'}</div>`;
       }
       for (const it of items) {
@@ -600,10 +618,24 @@
         }
         r.appendChild(d);
       }
+      if (res.headers.get('X-More')) {
+        const b = document.createElement('button'); b.className = 'more'; b.textContent = 'Show more';
+        b.onclick = () => { b.disabled = true; b.textContent = 'Loading…'; runSearch(true); };
+        r.appendChild(b);
+      }
       renderUsage();
-    } catch (err) { r.innerHTML = ''; r.textContent = 'Search failed: ' + err.message; }
+    } catch (err) {
+      if (more) { const b = r.querySelector('.more'); if (b) { b.disabled = false; b.textContent = 'Show more'; } alert('Search failed: ' + err.message); }
+      else { r.innerHTML = ''; r.textContent = 'Search failed: ' + err.message; }
+    }
   }
   $('searchForm').onsubmit = (e) => { e.preventDefault(); runSearch(); };
+  $('sort').onchange = () => runSearch();
+  try { $('hideUsed').checked = localStorage.getItem('rinkboard.hideUsed') === '1'; } catch {}
+  $('hideUsed').onchange = () => {
+    try { localStorage.setItem('rinkboard.hideUsed', $('hideUsed').checked ? '1' : '0'); } catch {}
+    renderUsage();
+  };
 
   const durationOf = (file) => new Promise((resolve) => {
     const a = new Audio(), url = URL.createObjectURL(file);
