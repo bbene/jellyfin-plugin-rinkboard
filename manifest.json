@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.8.0.0",
+        "changelog": "Board editor flags songs that are on a page more than once.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.8.0.0/rink-board_2.8.0.0.zip",
+        "checksum": "8b6437367c59c0187f848a72b3dc0575",
+        "timestamp": "2026-11-03T17:37:46Z"
+      },
+      {
         "version": "2.7.0.0",
         "changelog": "App updates over Wi-Fi: publish the Android app here and devices update themselves.",
         "targetAbi": "12.0.0.0",

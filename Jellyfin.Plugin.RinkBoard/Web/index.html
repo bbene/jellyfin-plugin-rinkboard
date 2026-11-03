@@ -31,6 +31,10 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; min-height: 80px; }
   .cue { border-radius: 8px; padding: 10px; min-height: 76px; cursor: pointer; border: 2px solid transparent; position: relative; text-shadow: 0 1px 2px #0008; }
   .cue.selected { border-color: #fff; }
+  .cue.dup { outline: 2px dashed #f0b429; outline-offset: 2px; }
+  .dups { border: 1px solid #f0b42988; background: #f0b42914; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+  .dups .group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
+  .dups .group button { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
   .cue .l { font-weight: 600; font-size: 15px; }
   .cue .s { font-size: 11px; opacity: .85; }
   .cue .k { position: absolute; top: 6px; right: 8px; font-size: 11px; background: #0006; border-radius: 4px; padding: 0 5px; }
@@ -99,6 +103,7 @@
           <span class="muted">Play order</span>
           <select id="pageOrder" style="width:auto"><option value="inorder">In order</option><option value="shuffle">Shuffle</option></select>
         </div>
+        <div class="dups hidden" id="dups"></div>
         <div class="row hidden" id="mainRow">
           <button id="addAction">+ Action</button>
           <span class="muted">Main-page buttons. Each tap plays the next track from its page, or starts the page if it's a playlist.</span>
@@ -326,6 +331,64 @@
     return d;
   }
 
+  // Possible duplicates on a page: the same library item twice, or the same song from two library items
+  // (a re-upload, a radio edit next to the album version). Compares title and artist with edit/version/
+  // feat. tags and punctuation dropped; remixes and live versions count as different songs.
+  const normTitle = (s) => (s || '').toLowerCase()
+    .replace(/\.(mp3|m4a|aac|wav|ogg|opus|flac|aiff?)$/, '')
+    .replace(/[([][^)\]]*\b(radio|edit|clean|explicit|dirty|version|remaster(ed)?|mono|stereo|single|album|feat\.?|ft\.?)\b[^)\]]*[)\]]/g, ' ')
+    .replace(/\s-\s[^-]*\b(radio|edit|clean|explicit|version|remaster(ed)?)\b.*$/, '')
+    .replace(/\s(feat|ft)\.?\s.*$/, '')
+    .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+  const firstArtist = (s) => normTitle((s || '').split(/,|;|&|\s(feat|ft)\.?\s|\sx\s/i)[0]);
+  function songOf(c) {
+    let title = c.trackName || c.label, artist = c.artist || '';
+    // Uploads often have no artist tag, just "Artist - Title" as the name.
+    if (!artist && / - /.test(title)) [artist, title] = [title.slice(0, title.indexOf(' - ')), title.slice(title.indexOf(' - ') + 3)];
+    return { title: normTitle(title), artist: firstArtist(artist), ms: c.durationMs || 0 };
+  }
+  function sameSong(a, b) {
+    if (a.itemId && a.itemId === b.itemId) return true;
+    const x = songOf(a), y = songOf(b);
+    if (!x.title || x.title !== y.title) return false;
+    if (x.artist && y.artist && x.artist !== y.artist) return false;
+    return !x.ms || !y.ms || Math.abs(x.ms - y.ms) <= 15000; // an edit can be a little shorter
+  }
+  /** Groups of cues on [p] that look like the same song, in page order. */
+  function duplicateGroups(p) {
+    const group = p.cues.map((_, i) => i);
+    const root = (i) => (group[i] === i ? i : (group[i] = root(group[i])));
+    for (let i = 0; i < p.cues.length; i++) {
+      for (let j = i + 1; j < p.cues.length; j++) if (sameSong(p.cues[i], p.cues[j])) group[root(j)] = root(i);
+    }
+    const byRoot = new Map();
+    p.cues.forEach((c, i) => { const r = root(i); byRoot.set(r, [...(byRoot.get(r) || []), c]); });
+    return [...byRoot.values()].filter((g) => g.length > 1);
+  }
+  function renderDups(groups) {
+    const el = $('dups');
+    el.classList.toggle('hidden', !groups.length);
+    if (!groups.length) return;
+    el.innerHTML = '';
+    const head = document.createElement('div');
+    head.textContent = `⚠ ${groups.length === 1 ? 'One song is' : groups.length + ' songs are'} on this page more than once. Click one to edit or remove it.`;
+    el.append(head);
+    for (const g of groups) {
+      const row = document.createElement('div'); row.className = 'group';
+      const why = document.createElement('span'); why.className = 'muted';
+      why.textContent = g.every((c) => c.itemId === g[0].itemId) ? 'Same file:' : 'Same song, different files:';
+      row.append(why);
+      for (const c of g) {
+        const b = document.createElement('button'); b.textContent = `${page().cues.indexOf(c) + 1}. ${c.label}`;
+        b.title = `${c.trackName}${c.artist ? ' — ' + c.artist : ''} (${fmt(c.durationMs)})`;
+        if (c.id === selectedId) b.className = 'primary';
+        b.onclick = () => { selectedId = c.id; render(); };
+        row.append(b);
+      }
+      el.append(row);
+    }
+  }
+
   function render() {
     renderUsage();
     const tabs = $('tabs'); tabs.innerHTML = '';
@@ -336,9 +399,10 @@
       tabs.appendChild(b);
     };
     tab(`★ Main (${board.actions.length})`, -1);
-    board.pages.forEach((p, i) => tab(`${p.type === 'playlist' ? '♫ ' : ''}${p.name} (${p.cues.length})`, i));
+    board.pages.forEach((p, i) => tab(`${p.type === 'playlist' ? '♫ ' : ''}${p.name} (${p.cues.length})${duplicateGroups(p).length ? ' ⚠' : ''}`, i));
     $('pageRow').classList.toggle('hidden', onMain());
     $('pageRow2').classList.toggle('hidden', onMain());
+    $('dups').classList.add('hidden'); // a page shows its own below
     $('mainRow').classList.toggle('hidden', !onMain());
     $('settingsRow').classList.toggle('hidden', !onMain());
     $('settingsRow2').classList.toggle('hidden', !onMain());
@@ -369,8 +433,11 @@
     $('pageOrder').value = page().order || 'inorder';
     if (!page().cues.length) grid.innerHTML = '<div class="muted">No cues yet. Search the library on the right and add tracks.</div>';
     const numbered = page().type === 'playlist';
+    const groups = duplicateGroups(page());
+    const dupIds = new Set(groups.flat().map((c) => c.id));
+    renderDups(groups);
     for (const [n, c] of page().cues.entries()) {
-      const d = document.createElement('div'); d.className = 'cue' + (c.id === selectedId ? ' selected' : '');
+      const d = document.createElement('div'); d.className = 'cue' + (c.id === selectedId ? ' selected' : '') + (dupIds.has(c.id) ? ' dup' : '');
       d.style.background = c.color;
       d.innerHTML = `<div class="l"></div><div class="s"></div>${c.hotkey ? '<span class="k"></span>' : ''}`;
       d.querySelector('.l').textContent = (numbered ? `${n + 1}. ` : '') + c.label;
