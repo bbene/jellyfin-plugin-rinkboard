@@ -133,6 +133,7 @@
           <div><label>Label</label><input id="a_label" maxlength="40"></div>
           <div><label>Plays from page</label><select id="a_page"></select></div>
           <div><label>Intro first (optional, e.g. goal horn)</label><select id="a_intro"></select></div>
+          <div><label>Overlap song with intro (ms)</label><input id="a_overlap" type="number" min="0" max="10000" step="250"></div>
           <div><label>Hotkey (keyboard)</label><input id="a_hotkey" maxlength="1"></div>
           <div><label>Color</label><input id="a_color" type="color"></div>
         </div>
@@ -408,10 +409,15 @@
     for (const p of board.pages) ps.add(new Option(`${p.type === 'playlist' ? '♫ ' : ''}${p.name} (${p.cues.length})`, p.id, false, p.id === a.pageId));
     const is = $('a_intro'); is.innerHTML = '<option value="">— none —</option>';
     for (const o of allCues()) is.add(new Option(`${o.pageName}: ${o.label}`, o.id, false, o.id === a.introCueId));
+    $('a_overlap').value = a.introOverlapMs || 0;
+    $('a_overlap').disabled = !a.introCueId;
     const p = board.pages.find((x) => x.id === a.pageId);
     $('a_hint').textContent = !p ? 'Pick the page this button plays from.'
       : p.type === 'playlist' ? `Starts the "${p.name}" playlist (${p.order === 'shuffle' ? 'shuffled' : 'in order'}) and keeps playing until stopped.`
       : `Each tap plays the next of ${p.cues.length} track(s) on "${p.name}" (${p.order === 'shuffle' ? 'shuffled, no repeats until all have played' : 'in order'}).`;
+    if (a.introCueId && p) $('a_hint').textContent += a.introOverlapMs > 0
+      ? ` The song starts ${(a.introOverlapMs / 1000).toFixed(a.introOverlapMs % 1000 ? 2 : 0).replace(/0$/, '')} s before the intro ends.`
+      : ' The song starts when the intro ends; set an overlap to start it sooner.';
   }
 
   function readActionEditor() {
@@ -420,14 +426,15 @@
     a.label = $('a_label').value.trim() || 'Action';
     a.pageId = $('a_page').value;
     a.introCueId = $('a_intro').value || null;
+    a.introOverlapMs = Math.max(0, Math.min(10000, Math.round(Number($('a_overlap').value) || 0)));
     a.hotkey = $('a_hotkey').value.toLowerCase();
     a.color = $('a_color').value;
     setDirty(true); render();
   }
-  ['a_label', 'a_page', 'a_intro', 'a_hotkey', 'a_color'].forEach((id) => $(id).addEventListener('change', readActionEditor));
+  ['a_label', 'a_page', 'a_intro', 'a_overlap', 'a_hotkey', 'a_color'].forEach((id) => $(id).addEventListener('change', readActionEditor));
 
   $('addAction').onclick = () => {
-    const a = { id: uuid(), label: 'New action', color: COLORS[board.actions.length % COLORS.length], hotkey: '', pageId: board.pages[0]?.id || '', introCueId: null };
+    const a = { id: uuid(), label: 'New action', color: COLORS[board.actions.length % COLORS.length], hotkey: '', pageId: board.pages[0]?.id || '', introCueId: null, introOverlapMs: 0 };
     board.actions.push(a); selectedId = a.id; setDirty(true); render();
   };
   $('aMoveL').onclick = () => { const f = findAction(selectedId); if (f && moveIn(board.actions, f.i, -1)) { setDirty(true); render(); } };

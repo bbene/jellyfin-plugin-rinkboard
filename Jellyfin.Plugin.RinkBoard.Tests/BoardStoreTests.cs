@@ -52,7 +52,7 @@ public class BoardStoreTests : IDisposable
           "pages": [{ "id": "p1", "name": "Goals", "type": "playlist", "order": "bogus", "extra": 1,
             "cues": [{ "id": "c1", "label": "", "kind": "music", "itemId": "abc", "color": "red",
                        "endMs": "", "volume": 3, "clip": true, "hotkey": "AB" }] }],
-          "actions": [{ "label": "Home Goal", "pageId": "p1", "introCueId": "missing" },
+          "actions": [{ "label": "Home Goal", "pageId": "p1", "introCueId": "missing", "introOverlapMs": 99999 },
                       { "label": "Nowhere", "pageId": "gone" }]
         }
         """)!.AsObject();
@@ -73,6 +73,8 @@ public class BoardStoreTests : IDisposable
         Assert.Equal("a", (string)cue["hotkey"]!);
         Assert.Equal("p1", (string)b["actions"]![0]!["pageId"]!);
         Assert.Null(b["actions"]![0]!["introCueId"]);
+        Assert.Equal(10000, (int)b["actions"]![0]!["introOverlapMs"]!);
+        Assert.Equal(0, (int)b["actions"]![1]!["introOverlapMs"]!);
         Assert.Equal(string.Empty, (string)b["actions"]![1]!["pageId"]!);
     }
 }

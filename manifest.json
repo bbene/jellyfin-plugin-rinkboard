@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "2.6.0.0",
+        "changelog": "Main-page buttons with an intro can start their song before the intro ends (Overlap song with intro).",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/bbene/jellyfin-plugin-rinkboard/releases/download/v2.6.0.0/rink-board_2.6.0.0.zip",
+        "checksum": "ac3a5b8c084c351fd97805cf4bf3fb2a",
+        "timestamp": "2026-11-03T14:16:35Z"
+      },
+      {
         "version": "2.5.0.0",
         "changelog": "Tablets can sign in with Quick Connect as any Jellyfin user (no API key or admin needed): signed-in users can read the board and download its songs; everything else still needs an admin. New Settings PIN on \u2605 Main locks the app's Settings on tablets.",
         "targetAbi": "12.0.0.0",

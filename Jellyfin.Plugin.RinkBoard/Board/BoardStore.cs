@@ -189,6 +189,7 @@ public sealed class BoardStore : IDisposable
                 ["hotkey"] = Str(a["hotkey"], 1).ToLowerInvariant(),
                 ["pageId"] = pageIds.Contains(pageId) ? pageId : string.Empty,
                 ["introCueId"] = cueIds.Contains(introId) ? introId : null,
+                ["introOverlapMs"] = Math.Min(Num(a["introOverlapMs"], 0), 10000),
             });
         }
 
