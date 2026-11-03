@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
+using Jellyfin.Plugin.RinkBoard.App;
 using Jellyfin.Plugin.RinkBoard.Audio;
 using Jellyfin.Plugin.RinkBoard.Board;
 using MediaBrowser.Common.Api;
@@ -35,6 +36,7 @@ namespace Jellyfin.Plugin.RinkBoard.Api;
 public partial class RinkBoardController : ControllerBase
 {
     private const long MaxUploadBytes = 300L * 1024 * 1024;
+    private const long MaxAppBytes = 200L * 1024 * 1024;
     private const int SearchPageSize = 60;
 
     // Jellyfin gives administrators and API keys this role.
@@ -55,6 +57,7 @@ public partial class RinkBoardController : ControllerBase
 
     private readonly BoardStore _board;
     private readonly TrackAnalyzer _analyzer;
+    private readonly AppReleases _app;
     private readonly ILibraryManager _library;
     private readonly IMediaEncoder _encoder;
     private readonly ILogger<RinkBoardController> _logger;
@@ -62,12 +65,14 @@ public partial class RinkBoardController : ControllerBase
     public RinkBoardController(
         BoardStore board,
         TrackAnalyzer analyzer,
+        AppReleases app,
         ILibraryManager library,
         IMediaEncoder encoder,
         ILogger<RinkBoardController> logger)
     {
         _board = board;
         _analyzer = analyzer;
+        _app = app;
         _library = library;
         _encoder = encoder;
         _logger = logger;
@@ -150,7 +155,7 @@ public partial class RinkBoardController : ControllerBase
     public ActionResult Info()
     {
         var problem = UploadFolderProblem();
-        return Ok(new { mode = "jellyfin", upload = problem is null, uploadProblem = problem, uploadFolder = UploadFolder, transfer = true, jellyfin = true, analysis = true });
+        return Ok(new { mode = "jellyfin", upload = problem is null, uploadProblem = problem, uploadFolder = UploadFolder, transfer = true, jellyfin = true, analysis = true, appUpdates = true });
     }
 
     [HttpGet("api/board")]
@@ -390,6 +395,61 @@ public partial class RinkBoardController : ControllerBase
         _library.DeleteItem(_library.GetItemById(Guid.Parse(itemId))!, new DeleteOptions { DeleteFileLocation = true });
         return NoContent();
     }
+
+    /// <summary>
+    /// The app build a device should run, given the processor types it supports (best first, as Android lists
+    /// them); 204 when none is published. Devices download it when its checksum is new to them.
+    /// </summary>
+    [HttpGet("api/app")]
+    [Authorize]
+    public ActionResult GetApp([FromQuery] string? abis)
+    {
+        var release = _app.ForDevice((abis ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        Response.Headers.CacheControl = "no-store";
+        return release is null ? NoContent() : Ok(AppJson(release));
+    }
+
+    [HttpGet("api/app/{abi}.apk")]
+    [Authorize]
+    public ActionResult GetAppFile([FromRoute] string abi) =>
+        _app.Get(abi) is null
+            ? NotFound(new { error = "not found" })
+            : PhysicalFile(_app.ApkPath(abi), "application/vnd.android.package-archive", enableRangeProcessing: true);
+
+    /// <summary>Every published app build, for the editor.</summary>
+    [HttpGet("api/app/all")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult GetAppReleases() => Ok(_app.All().Select(AppJson));
+
+    /// <summary>
+    /// Publishes an APK (the request body) as the build for the processor type it contains, replacing the
+    /// older one. <paramref name="version"/> is a label for people; devices check the version in the file.
+    /// </summary>
+    [HttpPost("api/app")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [RequestSizeLimit(MaxAppBytes)]
+    public async Task<ActionResult> UploadApp([FromQuery] string? version, CancellationToken ct)
+    {
+        try
+        {
+            var release = await _app.SaveAsync(Request.Body, version, ct).ConfigureAwait(false);
+            _logger.LogInformation("Rink Board: published app {Version} for {Abi}", release.Version, release.Abi);
+            return Ok(AppJson(release));
+        }
+        catch (InvalidDataException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
+    }
+
+    [HttpDelete("api/app/{abi}")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult DeleteApp([FromRoute] string abi) =>
+        _app.Delete(abi) ? NoContent() : NotFound(new { error = "not found" });
+
+    // Spelled out: Jellyfin's JSON settings would capitalize the record's property names.
+    private static object AppJson(AppRelease r) =>
+        new { abi = r.Abi, version = r.Version, sha256 = r.Sha256, size = r.Size, uploaded = r.Uploaded, url = $"api/app/{r.Abi}.apk" };
 
     private string? AudioPath(string itemId)
     {

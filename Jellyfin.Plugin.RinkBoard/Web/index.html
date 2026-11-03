@@ -205,6 +205,15 @@
           <div class="muted" id="transferHint">An export holds the board and all its audio, so you can copy a setup to another device.</div>
         </div>
       </div>
+
+      <div id="appTools" class="hidden">
+        <h2 style="margin-top:16px">App updates</h2>
+        <div id="appReleases"></div>
+        <div class="row" style="margin-top:8px">
+          <label class="filebtn">Publish app (APK)…<input type="file" id="appInput" accept=".apk,application/vnd.android.package-archive" multiple hidden></label>
+        </div>
+        <div class="muted" id="appStatus">Android devices signed in to this server download a newer app here and install it between 2 and 5 AM (kiosk devices), or show that an update is ready.</div>
+      </div>
     </aside>
   </main>
 </div>
@@ -294,6 +303,8 @@
     $('localTools').classList.toggle('hidden', !info.upload && !info.transfer);
     $('uploadRow').classList.toggle('hidden', !info.upload);
     $('transferTools').classList.toggle('hidden', !info.transfer);
+    $('appTools').classList.toggle('hidden', !info.appUpdates);
+    if (info.appUpdates) loadAppReleases();
     if (info.mode === 'jellyfin') {
       $('toolsTitle').textContent = 'Clips and backups';
       $('transferHint').textContent = 'An export holds the board and all its audio. Import one from a tablet in local mode (or another Jellyfin) to move that setup here; its clips go into the upload folder.'
@@ -686,6 +697,44 @@
       s.textContent += ' They show up in the library once Jellyfin has scanned them, usually within a few seconds.';
       setTimeout(runSearch, 4000); setTimeout(runSearch, 10000);
     }
+  };
+
+  async function loadAppReleases() {
+    const el = $('appReleases');
+    try {
+      const list = await (await api('api/app/all')).json();
+      el.innerHTML = list.length ? '' : '<div class="muted">No app published yet.</div>';
+      for (const r of list) {
+        const row = document.createElement('div'); row.className = 'row';
+        const when = new Date(r.uploaded).toLocaleString();
+        const label = document.createElement('span'); label.style.flex = '1'; label.textContent = r.version + ' ';
+        const meta = document.createElement('span'); meta.className = 'muted'; meta.textContent = `· ${r.abi} · ${(r.size / 1048576).toFixed(1)} MB · ${when}`;
+        label.append(meta); row.append(label);
+        const del = document.createElement('button'); del.textContent = 'Remove';
+        del.onclick = async () => {
+          if (!confirm(`Remove the ${r.abi} app build? Devices keep the version they have.`)) return;
+          try { await api('api/app/' + r.abi, { method: 'DELETE' }); } catch (err) { alert('Remove failed: ' + err.message); }
+          loadAppReleases();
+        };
+        row.append(del); el.append(row);
+      }
+    } catch (err) { if (err.message !== 'unauthorized') el.textContent = 'Couldn\'t load app builds: ' + err.message; }
+  }
+
+  $('appInput').onchange = async (e) => {
+    const files = [...e.target.files]; e.target.value = '';
+    if (!files.length) return;
+    const version = prompt('Version label for this build, e.g. 0.2.0 (3)', '');
+    if (version === null) return;
+    const s = $('appStatus');
+    for (const f of files) {
+      s.textContent = `Publishing ${f.name}…`;
+      try {
+        const r = await (await api('api/app?version=' + encodeURIComponent(version), { method: 'POST', body: f })).json();
+        s.textContent = `Published ${r.version} for ${r.abi}. Devices pick it up within a few minutes.`;
+      } catch (err) { s.textContent = ''; alert(`Publishing ${f.name} failed: ${err.message}`); }
+    }
+    loadAppReleases();
   };
 
   $('exportBtn').onclick = async () => {
