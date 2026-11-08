@@ -219,6 +219,12 @@
         </div>
         <div class="muted" id="appStatus">Android devices signed in to this server download a newer app here and install it between 2 and 5 AM (kiosk devices), or show that an update is ready.</div>
       </div>
+
+      <div id="logTools" class="hidden">
+        <h2 style="margin-top:16px">Device logs</h2>
+        <div id="deviceLogs"></div>
+        <div class="muted">Android devices send what they played, audio outputs plugged in or out, and app restarts every few minutes while they're online.</div>
+      </div>
     </aside>
   </main>
 </div>
@@ -310,6 +316,8 @@
     $('transferTools').classList.toggle('hidden', !info.transfer);
     $('appTools').classList.toggle('hidden', !info.appUpdates);
     if (info.appUpdates) loadAppReleases();
+    $('logTools').classList.toggle('hidden', !info.deviceLogs);
+    if (info.deviceLogs) loadDeviceLogs();
     if (info.mode === 'jellyfin') {
       $('toolsTitle').textContent = 'Clips and backups';
       $('transferHint').textContent = 'An export holds the board and all its audio. Import one from a tablet in local mode (or another Jellyfin) to move that setup here; its clips go into the upload folder.'
@@ -786,6 +794,38 @@
         row.append(del); el.append(row);
       }
     } catch (err) { if (err.message !== 'unauthorized') el.textContent = 'Couldn\'t load app builds: ' + err.message; }
+  }
+
+  async function loadDeviceLogs() {
+    const el = $('deviceLogs');
+    try {
+      const list = await (await api('api/logs')).json();
+      el.innerHTML = list.length ? '' : '<div class="muted">No device has sent a log yet.</div>';
+      for (const d of list) {
+        const row = document.createElement('div'); row.className = 'row';
+        const label = document.createElement('span'); label.style.flex = '1'; label.textContent = d.model + ' ';
+        const meta = document.createElement('span'); meta.className = 'muted';
+        meta.textContent = `· ${d.version}${d.user ? ' · ' + d.user : ''} · last heard ${new Date(d.lastSeen).toLocaleString()}`;
+        label.append(meta); row.append(label);
+        const view = document.createElement('button'); view.textContent = 'View';
+        view.onclick = async () => {
+          // Opened as a file: the log needs the sign-in header, which a plain link wouldn't send.
+          const w = window.open('', '_blank');
+          try {
+            const text = await (await api('api/logs/' + encodeURIComponent(d.id))).text();
+            const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+            if (w) w.location = url; else location.href = url;
+          } catch (err) { if (w) w.close(); alert('Couldn\'t load the log: ' + err.message); }
+        };
+        const del = document.createElement('button'); del.textContent = 'Clear';
+        del.onclick = async () => {
+          if (!confirm(`Clear the log from ${d.model}? It starts again the next time the device sends one.`)) return;
+          try { await api('api/logs/' + encodeURIComponent(d.id), { method: 'DELETE' }); } catch (err) { alert('Clear failed: ' + err.message); }
+          loadDeviceLogs();
+        };
+        row.append(view, del); el.append(row);
+      }
+    } catch (err) { if (err.message !== 'unauthorized') el.textContent = 'Couldn\'t load device logs: ' + err.message; }
   }
 
   $('appInput').onchange = async (e) => {

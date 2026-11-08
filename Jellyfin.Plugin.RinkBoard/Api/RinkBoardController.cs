@@ -13,6 +13,7 @@ using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.RinkBoard.App;
 using Jellyfin.Plugin.RinkBoard.Audio;
 using Jellyfin.Plugin.RinkBoard.Board;
+using Jellyfin.Plugin.RinkBoard.Logs;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -58,6 +59,7 @@ public partial class RinkBoardController : ControllerBase
     private readonly BoardStore _board;
     private readonly TrackAnalyzer _analyzer;
     private readonly AppReleases _app;
+    private readonly DeviceLogs _logs;
     private readonly ILibraryManager _library;
     private readonly IMediaEncoder _encoder;
     private readonly ILogger<RinkBoardController> _logger;
@@ -66,6 +68,7 @@ public partial class RinkBoardController : ControllerBase
         BoardStore board,
         TrackAnalyzer analyzer,
         AppReleases app,
+        DeviceLogs logs,
         ILibraryManager library,
         IMediaEncoder encoder,
         ILogger<RinkBoardController> logger)
@@ -73,6 +76,7 @@ public partial class RinkBoardController : ControllerBase
         _board = board;
         _analyzer = analyzer;
         _app = app;
+        _logs = logs;
         _library = library;
         _encoder = encoder;
         _logger = logger;
@@ -155,7 +159,7 @@ public partial class RinkBoardController : ControllerBase
     public ActionResult Info()
     {
         var problem = UploadFolderProblem();
-        return Ok(new { mode = "jellyfin", upload = problem is null, uploadProblem = problem, uploadFolder = UploadFolder, transfer = true, jellyfin = true, analysis = true, appUpdates = true });
+        return Ok(new { mode = "jellyfin", upload = problem is null, uploadProblem = problem, uploadFolder = UploadFolder, transfer = true, jellyfin = true, analysis = true, appUpdates = true, deviceLogs = true });
     }
 
     [HttpGet("api/board")]
@@ -446,6 +450,54 @@ public partial class RinkBoardController : ControllerBase
     [Authorize(Policy = Policies.RequiresElevation)]
     public ActionResult DeleteApp([FromRoute] string abi) =>
         _app.Delete(abi) ? NoContent() : NotFound(new { error = "not found" });
+
+    /// <summary>
+    /// New lines from a device's log (the request body, plain text). Any signed-in user may send them, since
+    /// devices sign in as ordinary users; only administrators can read them.
+    /// </summary>
+    [HttpPost("api/logs")]
+    [Authorize]
+    [RequestSizeLimit(DeviceLogs.MaxUploadBytes)]
+    public async Task<ActionResult> PostLog([FromQuery] string? device, [FromQuery] string? model, [FromQuery] string? version, CancellationToken ct)
+    {
+        if (DeviceLogs.FileId(device) is not { } id)
+        {
+            return BadRequest(new { error = "device is required" });
+        }
+
+        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+        var text = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+        await _logs.AppendAsync(id, model, version, User.Identity?.Name ?? string.Empty, text, ct).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    /// <summary>The devices that have sent logs, most recently heard from first.</summary>
+    [HttpGet("api/logs")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult GetLogs() => Ok(_logs.All().Select(DeviceJson));
+
+    /// <summary>One device's log as plain text, oldest line first.</summary>
+    [HttpGet("api/logs/{device}")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult GetLog([FromRoute] string device)
+    {
+        if (_logs.Get(device) is null)
+        {
+            return NotFound(new { error = "not found" });
+        }
+
+        Response.Headers.CacheControl = "no-store";
+        var path = _logs.LogPath(device);
+        return System.IO.File.Exists(path) ? PhysicalFile(path, "text/plain; charset=utf-8") : Content(string.Empty, "text/plain");
+    }
+
+    [HttpDelete("api/logs/{device}")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult DeleteLog([FromRoute] string device) =>
+        _logs.Delete(device) ? NoContent() : NotFound(new { error = "not found" });
+
+    private static object DeviceJson(DeviceInfo d) =>
+        new { id = d.Id, model = d.Model, version = d.Version, user = d.User, lastSeen = d.LastSeen, size = d.Size };
 
     // Spelled out: Jellyfin's JSON settings would capitalize the record's property names.
     private static object AppJson(AppRelease r) =>
